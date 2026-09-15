@@ -137,7 +137,7 @@ describe('negative-case matrix: control block', () => {
     expectCode(() => parseControlBlock(new Uint8Array(66)), 'INVALID_CONTROL_BLOCK_LENGTH');
   });
 
-  it('the 33-byte P2TR base length is not a valid shape under P2MR', () => {
+  it('33 bytes is a valid P2MR shape (m = 1); a P2TR-style 33 + 32m length is not', () => {
     // 33 bytes = 1 + 32*1, valid as a shape, but the low bit of the first byte still has to be 1
     const cb = new Uint8Array(33);
     cb[0] = 0xc1;

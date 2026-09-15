@@ -13,10 +13,9 @@ import {
 import { isErrorVector, loadVectorFile } from './vectors.js';
 
 /**
- * From the differential review of bitcoinjs-lib PR #2312
- * (docs/quantum-program/l2-pr2312-review-2026-09-15.md §5):
- * that review split "derive address / scriptPubKey / merkle root from one another" into its own
- * fixture, so the same entry-point tests are added here.
+ * From a differential review of bitcoinjs-lib PR #2312: that review split
+ * "derive address / scriptPubKey / merkle root from one another" into its own fixture,
+ * so the same entry-point tests are added here.
  */
 describe('address <-> scriptPubKey <-> merkle root form a closed triangle', () => {
   const ROOT = hexToBytes('c525714a7f49c28aedbbba78c005931a81c234b2f6c99a73e4d06082adc8bf2b');
