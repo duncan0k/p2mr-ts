@@ -1,0 +1,11 @@
+# Default: LF everywhere in the repo, LF on checkout too, so that autocrlf on
+# different platforms cannot introduce differences
+* text=auto eol=lf
+
+# Vendored upstream files must stay byte-for-byte as they are -- vectors/SOURCE.md
+# records their sha256, and any line-ending conversion would break the checksums
+vectors/** -text
+reference/** -text
+
+# Same for the vendored Bitcoin Core test framework
+test/py/core_v29/** -text

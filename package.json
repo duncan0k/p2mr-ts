@@ -1,0 +1,44 @@
+{
+  "name": "p2mr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline BIP-360 Pay-to-Merkle-Root (P2MR) construction library — tree hashing, control blocks, bech32m witness-v2 addresses, witness assembly and BIP-341/342 signature hashes. Construction only; no network validation.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/duncan0k/p2mr-ts.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "gen:sighash-vectors": "tsx scripts/generate-sighash-vectors.ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "bech32": "2.0.0"
+  },
+  "devDependencies": {
+    "@noble/curves": "2.4.0",
+    "@types/node": "24.10.1",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "vitest": "5.0.0"
+  }
+}
