@@ -2,7 +2,7 @@
   "name": "p2mr",
   "version": "0.1.0",
   "private": true,
-  "description": "Offline BIP-360 Pay-to-Merkle-Root (P2MR) construction library — tree hashing, control blocks, bech32m witness-v2 addresses, witness assembly and BIP-341/342 signature hashes. Construction only; no network validation.",
+  "description": "Offline BIP-360 Pay-to-Merkle-Root (P2MR) construction library — tree hashing, control blocks, bech32m witness-v2 addresses, witness assembly and BIP-341/342 signature hashes, plus the wallet side of the experimental OP_CHECKMLDSA44 leaves of the Ark-0 test signet. No network validation.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@noble/hashes": "2.4.0",
+    "@noble/post-quantum": "0.7.1",
     "bech32": "2.0.0"
   },
   "devDependencies": {

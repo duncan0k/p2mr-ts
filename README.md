@@ -1,7 +1,8 @@
 # p2mr
 
 An **offline construction library** for BIP-360 Pay-to-Merkle-Root (P2MR). TypeScript, ESM,
-Node >= 20, with `@noble/hashes` and `bech32` as the only runtime dependencies.
+Node >= 20, with `@noble/hashes` and `bech32` as runtime dependencies, and `@noble/post-quantum`
+for the experimental OP_CHECKMLDSA44 leaves (see below).
 
 It is aligned with a pinned commit of the `bitcoin/bips` repository:
 
@@ -39,8 +40,9 @@ sha256 recorded in [`vectors/SOURCE.md`](vectors/SOURCE.md).
 - **No network validation of any kind.** It only constructs and computes digests. There is no
   node, no mempool, no consensus execution. "The vectors pass" says only that the construction agrees;
   it says nothing about whether these outputs can be spent on any network.
-- **No signing.** It holds no private key, performs no BIP-340 signing, and contains no
-  post-quantum signature algorithm.
+- **No BIP-340 signing, and no key storage.** It keeps no private key. The one signing
+  function is for the experimental OP_CHECKMLDSA44 leaves below: it takes an ML-DSA-44
+  secret key from the caller and signs with `@noble/post-quantum`.
 - **Not a consensus implementation.** The library's "reject internal pubkeys", "reject single
   leaves" and "reject non-`0xC0` leaves" are **construction-interface constraints** and must
   not be carried into consensus tests as they are -- a node only ever sees a 32-byte witness
@@ -114,7 +116,7 @@ npm run typecheck
 npm test
 ```
 
-Seven layers of coverage:
+Eight layers of coverage:
 
 1. **All 9 cases of `p2mr_construction.json`** (at the pinned commit). The 7 positive cases
    are compared case by case on leaf hashes, merkle root, scriptPubKey, `bip350Address` and
@@ -146,6 +148,9 @@ Seven layers of coverage:
    three are handed to `CTransaction` from the Core v29.0 test framework to compare the
    serialization and the txid/wtxid. Byte order needs an external cross-check -- a
    self-consistent test cannot catch a txid that is reversed as a whole.
+8. **OP_CHECKMLDSA44 (experimental)**: the unit tests of `src/mldsa44.ts`, and the
+   cross-implementation checks against the M1 patch series of Bitcoin Core described in
+   the section on OP_CHECKMLDSA44 below.
 
 ### How the signature-hash layer is cross-checked (important)
 
@@ -205,6 +210,65 @@ Schnorr over secp256k1 from beginning to end. That chain activates P2MR from hei
 the default signet and mainnet do not activate it at all, and this section has no bearing on
 the official status of BIP-360.
 
+## Experimental: OP_CHECKMLDSA44 leaves
+
+`OP_CHECKMLDSA44` is an experiment of the Ark-0 test signet. It is **not part of BIP-360**,
+which defines no post-quantum signature check. A Bitcoin Core node with the M1 patch series
+executes byte `0xf0` in a P2MR leaf as an ML-DSA-44 (FIPS 204) signature check, from an
+activation height `H` fixed in its build. Everywhere else the byte keeps its meaning: it is
+`OP_SUCCESS240` in tapscript. `src/mldsa44.ts` is the wallet side:
+
+- **Leaves**: `buildMldsa44LeafScript` makes S1
+  (`<pk[0]:520> <pk[1]:520> <pk[2]:272> OP_CHECKMLDSA44`) or S2 (S1
+  `OP_VERIFY <x-only key> OP_CHECKSIG`, which needs a BIP-340 signature as well), and
+  `parseMldsa44LeafScript` recognizes them byte for byte, as node policy does.
+- **Outputs**: `createMldsa44Output` builds for `signet` or `regtest` only (the network is
+  required: on mainnet or testnet a witness v2 output is spendable by anyone) and puts the
+  template leaf next to an `OP_RETURN` leaf, both
+  at depth one with leaf version `0xC0`. A single leaf would be spent without executing it,
+  and a second leaf of another version, or any other OP_SUCCESSx in the leaf, would let the
+  output be spent without a signature. `createP2mrOutput` still refuses `0xf0` like any
+  OP_SUCCESSx; only `createMldsa44Output` lifts that, for the one leaf it builds from a key.
+- **Activation**: `createMldsa44Output` refuses unless the tip the wallet observed is at least
+  `H + 6` (`mldsa44AddressesAllowed`). `H` is read from the node's `getdeploymentinfo`
+  (`mldsa44ActivationHeight`): the later of the `p2mr` and `p2mr_mldsa44` heights, since the
+  node checks the opcode only where both are active; unknown state is a refusal. Before `H`
+  the leaf is an OP_SUCCESSx that anyone can spend.
+- **Received outputs**: `mldsa44ProtectionStatus` counts an output as protected only when it
+  commits to exactly the template tree of the wallet's keys and confirmed at or above `H`.
+  Unconfirmed is pending; everything else is unprotected, at any height. Compute it again
+  after a reorganization.
+- **Funding**: `withMldsa44FundingLockTime` sets `nLockTime` to `H` on a funding transaction
+  the wallet builds (one input must have an `nSequence` below `0xffffffff`), so that the
+  transaction never confirms at or below `H`, even after a reorganization.
+- **Signing**: `mldsa44Sighash` is the BIP-341 tapscript signature message with `key_version`
+  1. `signMldsa44Input` signs it with pure ML-DSA-44 and the context string
+  `P2MR/MLDSA44/EXP0`, hedged by default and deterministic with `extraEntropy: false`.
+  `assembleMldsa44Witness` lays the signature out in five witness elements of 520, 520, 520,
+  520 and 340 bytes (341 with an explicit hash type). For S2 the caller supplies the BIP-340
+  signature over the same message with `key_version` 0 (`p2mrScriptPathSighash`).
+
+`@noble/post-quantum` states that it has not been independently audited.
+
+What is cross-checked (`test/mldsa44-crossimpl.test.ts`; the files and their checksums are in
+`vectors/SOURCE.md`):
+
+- the signature messages, byte for byte against vectors computed by the Core test framework;
+- the 39 OP_CHECKMLDSA44 rows of Core's `script_tests.json`, whose ML-DSA-44 signatures were
+  made by the Core test framework: on the 23 rows that execute a template leaf under the
+  active rules, this library reaches the verdict of Core's interpreter (valid, invalid
+  signature, wrong chunk size, wrong hash type, missing elements); the other 16 rows are
+  leaves that are not templates, leaves that are not executed and scripts that are not P2MR,
+  which this library refuses to treat as template spends;
+- the ACVP and Wycheproof ML-DSA-44 verification vectors that Core's verifier (mldsa-native)
+  passes: `@noble/post-quantum` gives the expected result on all 195;
+- key generation and deterministic signatures, byte for byte against `fips204.py` of the Core
+  test framework, and each side verifying the other's signatures.
+
+This is agreement between implementations on these inputs. A template leaf protects the
+spending path of its own output and nothing else: the signet's blocks are still authorized by
+a classical signature, and none of this is a claim about Bitcoin.
+
 ## Wording for public claims (red lines)
 
 The following claims **must not be used**:
@@ -212,6 +276,8 @@ The following claims **must not be used**:
 - "the real bc1z"
 - "the first / the only / nothing else implements it"
 - anything implying "verified on a network" or "verified on chain"
+- for OP_CHECKMLDSA44: "part of BIP-360", "quantum-safe Bitcoin", or a network described as
+  resistant to quantum attacks
 
 Wording that is fine:
 
@@ -226,8 +292,10 @@ Wording that is fine:
 ```
 src/          library code
 test/         tests (test/py/ref_dump.py runs the vendored Python reference implementation;
-              test/py/core_v29/ is the vendored Core v29.0 test framework)
+              test/py/core_v29/ is the vendored Core v29.0 test framework;
+              test/py/core_m1/ holds fips204.py from the M1 patch series)
 scripts/      generator for the self-generated digest vectors
-vectors/      vectors (3 upstream + 1 self-generated) plus SOURCE.md checksums
+vectors/      vectors (3 upstream + 1 self-generated; core_m1/ from the M1 patch series)
+              plus SOURCE.md checksums
 reference/    the BIP-360 text and the Python reference implementation (vendored, unmodified)
 ```

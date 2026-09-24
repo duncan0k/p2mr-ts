@@ -112,3 +112,38 @@ about P2MR -- it simply serializes the `OP_2 <root>` scriptPubKey it is handed, 
 exactly the part for which BIP-360 upstream publishes no vectors. What it establishes is
 that this library and the Core test framework compute the same values; it does not establish
 that any node would accept these spends.
+
+## OP_CHECKMLDSA44: files from the M1 patch series (experimental)
+
+`OP_CHECKMLDSA44` is an experiment of the Ark-0 test signet, not part of BIP-360. The files
+below come from the `patches-m1/` series of `bitcoin-p2mr-patches` (Bitcoin Core v31.1 with the
+P2MR, M0.5 wallet, retarget spacing and M1 series applied), each read from the git object of the
+patched tree rather than from a working copy, so that line endings are as committed. They are
+used by `test/mldsa44-crossimpl.test.ts`.
+
+| sha256 | Path in this repo | Path in the patched Core tree | Added by patch |
+| --- | --- | --- | --- |
+| `8db61a06ab132f08d0f51d4681cc0f8828add178fa9ec132db13d4768747d3ca` | `vectors/core_m1/p2mr_mldsa44_sighash.json` | `src/test/data/p2mr_mldsa44_sighash.json` | 0043 |
+| `f80a0322269a14e9031adcfaee9fcfa25588f86bdefe4243955c286f03c8e04e` | `vectors/core_m1/mldsa44_acvp_sigver.json` | `src/test/data/mldsa44_acvp_sigver.json` | 0037 |
+| `664410b591441e417a32a3ec74455b59ef7725b5ebbb5e06cf821bfbb81c35ec` | `vectors/core_m1/mldsa44_wycheproof_verify.json` | `src/test/data/mldsa44_wycheproof_verify.json` | 0037 |
+| `85b1a86a801179b32f527c25bae33be8f041f101bdac1e33bcaff723269175b5` | `test/py/core_m1/fips204.py` | `test/functional/test_framework/crypto/fips204.py` | 0042 |
+| `8631bf49eb2c85950dd8b77624108a28d8a626f28876b9bd6aa08bb3b51c62b7` | `vectors/core_m1/script_tests_mldsa44.json` | extracted, see below | 0043 |
+
+`vectors/core_m1/script_tests_mldsa44.json` is not a copy of a file. It is the block of
+`src/test/data/script_tests.json` (that file's sha256 at patch 0043:
+`488ebf919aa77323560e6503401a560713cce1cb8d2847f7a41aa69e8d0787c3`) from the header row
+`P2MR OP_CHECKMLDSA44 tests (doc/p2mr-mldsa44.md)` up to, not including, the next header row:
+the header and 39 rows, written with Python's `json.dumps(rows, indent=1)`.
+
+- `p2mr_mldsa44_sighash.json` holds messages computed by the Python test framework; this
+  library must give the same bytes (`mldsa44Sighash`, key_version 1, and key_version 0).
+- The script test rows carry real ML-DSA-44 signatures made by `fips204.py`. On the 23 rows
+  that execute a template leaf under the active rules, this library, checking with
+  `@noble/post-quantum`, must reach the verdict Core's interpreter reaches; the other 16 are
+  rows it must refuse to treat as template spends.
+- The ACVP and Wycheproof files are the verification vectors Core's verifier (mldsa-native)
+  passes; `@noble/post-quantum` must pass the same ones.
+- `fips204.py` is the ML-DSA implementation of the Core test framework, vendored there from
+  py-acvp-pqc (Unlicense) with hashlib in place of pycryptodome. It is run by
+  `test/py/mldsa44_dump.py` to compare key generation and deterministic signatures with
+  `@noble/post-quantum` byte for byte.

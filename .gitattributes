@@ -7,5 +7,6 @@
 vectors/** -text
 reference/** -text
 
-# Same for the vendored Bitcoin Core test framework
+# Same for the vendored Bitcoin Core test framework files
 test/py/core_v29/** -text
+test/py/core_m1/** -text

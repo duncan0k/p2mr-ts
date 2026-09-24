@@ -5,3 +5,4 @@ dist/
 __pycache__/
 *.py[cod]
 ark0-spend.state.json
+g1-regtest.result.json

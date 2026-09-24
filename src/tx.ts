@@ -252,5 +252,53 @@ export function computeWtxid(tx: Transaction): Uint8Array {
   return hash256(encodeTransaction(tx));
 }
 
+/** nSequence of an input that is final; when every input has it, nLockTime is not enforced. */
+export const SEQUENCE_FINAL = 0xffffffff;
+
+/** nLockTime values from this one on are timestamps rather than block heights. */
+export const LOCKTIME_THRESHOLD = 500_000_000;
+
+/** Whether a value is what a 4-byte unsigned field can hold, so that serializing it keeps its value. */
+export function isUint32(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n <= 0xffffffff;
+}
+
+/**
+ * Throw unless the lock time and every nSequence are uint32 values. Serialization writes any number
+ * modulo 2^32, so a sequence of -1 would be written as SEQUENCE_FINAL while looking otherwise.
+ */
+export function assertLockFieldsUint32(tx: Transaction): void {
+  assert(isUint32(tx.locktime), 'INVALID_TRANSACTION', `nLockTime must be a uint32, got ${String(tx.locktime)}`);
+  for (const [i, input] of tx.inputs.entries()) {
+    assert(
+      isUint32(input.sequence),
+      'INVALID_TRANSACTION',
+      `nSequence of input ${i} must be a uint32, got ${String(input.sequence)}`,
+    );
+  }
+}
+
+/**
+ * Whether a transaction may be included in a block at `blockHeight`, by the rule of Core's
+ * `IsFinalTx` for a lock time that is a block height: the lock time is zero, or below the block's
+ * height, or every input has SEQUENCE_FINAL. A lock time that is a timestamp is refused, since that
+ * rule compares it with a block time instead.
+ */
+export function isFinalAtHeight(tx: Transaction, blockHeight: number): boolean {
+  assert(
+    Number.isSafeInteger(blockHeight) && blockHeight >= 0,
+    'INVALID_TRANSACTION',
+    `block height must be a non-negative integer, got ${String(blockHeight)}`,
+  );
+  assertLockFieldsUint32(tx);
+  assert(
+    tx.locktime < LOCKTIME_THRESHOLD,
+    'INVALID_LOCKTIME',
+    `lock time ${tx.locktime} is a timestamp; only lock times below ${LOCKTIME_THRESHOLD} are block heights`,
+  );
+  if (tx.locktime === 0 || tx.locktime < blockHeight) return true;
+  return tx.inputs.every((input) => input.sequence === SEQUENCE_FINAL);
+}
+
 /** compact_size encoding re-exported for external use (the sighash needs a length-prefixed scriptPubKey). */
 export { compactSize, serializeVarBytes };
