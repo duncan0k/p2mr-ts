@@ -216,7 +216,9 @@ the official status of BIP-360.
 which defines no post-quantum signature check. A Bitcoin Core node with the M1 patch series
 executes byte `0xf0` in a P2MR leaf as an ML-DSA-44 (FIPS 204) signature check, from an
 activation height `H` fixed in its build. Everywhere else the byte keeps its meaning: it is
-`OP_SUCCESS240` in tapscript. `src/mldsa44.ts` is the wallet side:
+`OP_SUCCESS240` in tapscript. The series is `patches-m1/` in
+[bitcoin-p2mr-patches](https://github.com/duncan0k/bitcoin-p2mr-patches); on the Ark-0 signet
+`H` is 8600. `src/mldsa44.ts` is the wallet side:
 
 - **Leaves**: `buildMldsa44LeafScript` makes S1
   (`<pk[0]:520> <pk[1]:520> <pk[2]:272> OP_CHECKMLDSA44`) or S2 (S1
