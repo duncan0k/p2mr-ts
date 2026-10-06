@@ -29,7 +29,7 @@ import { createP2mrOutput, isP2mrScriptPubKey, parseP2mrScriptPubKey } from './o
 import type { P2mrScriptPathSighashParams } from './sighash.js';
 import { p2mrScriptPathSighash, SIGHASH_DEFAULT } from './sighash.js';
 import { tapBranchHash, tapLeafHash } from './tagged.js';
-import { DEFAULT_LEAF_VERSION } from './tree.js';
+import { DEFAULT_LEAF_VERSION, TRIPWIRED_LEAF_VERSION } from './tree.js';
 import type { Transaction } from './tx.js';
 import { assertLockFieldsUint32, LOCKTIME_THRESHOLD, SEQUENCE_FINAL } from './tx.js';
 import { assembleScriptPathWitness } from './witness.js';
@@ -69,6 +69,9 @@ const OP_CHECKSIG = 0xac;
 
 /** Hash types BIP-341 allows to appear explicitly; an explicit 0x00 is invalid. */
 const EXPLICIT_HASH_TYPES: ReadonlySet<number> = new Set([0x01, 0x02, 0x03, 0x81, 0x82, 0x83]);
+
+/** Leaf versions in which a node executes OP_CHECKMLDSA44: 0xC0, and 0xe0 once the tripwire rules are active. */
+const MLDSA44_LEAF_VERSIONS: ReadonlySet<number> = new Set([DEFAULT_LEAF_VERSION, TRIPWIRED_LEAF_VERSION]);
 
 export type Mldsa44Template = 'S1' | 'S2';
 
@@ -320,8 +323,13 @@ export function createMldsa44Output(options: CreateMldsa44OutputOptions): Mldsa4
 
 export interface Mldsa44SighashParams
   extends Omit<P2mrScriptPathSighashParams, 'leafHash' | 'keyVersion'> {
-  /** The leaf being executed, version 0xC0. */
+  /** The leaf being executed. */
   readonly leafScript: Uint8Array;
+  /**
+   * Its leaf version: 0xC0, the default, or 0xe0 for the ML-DSA-44 leaf of an S3 output (see
+   * tripwire.ts). The TapLeaf hash commits to it, so a signature for one does not verify in the other.
+   */
+  readonly leafVersion?: number;
 }
 
 /**
@@ -332,10 +340,15 @@ export interface Mldsa44SighashParams
  * `p2mrScriptPathSighash` with the leaf hash of the template leaf.
  */
 export function mldsa44Sighash(params: Mldsa44SighashParams): Uint8Array {
-  const { leafScript, ...rest } = params;
+  const { leafScript, leafVersion = DEFAULT_LEAF_VERSION, ...rest } = params;
+  assert(
+    MLDSA44_LEAF_VERSIONS.has(leafVersion),
+    'LEAF_VERSION_NOT_ALLOWED',
+    `OP_CHECKMLDSA44 is executed in leaves of version 0xc0, and of version 0xe0 once the tripwire rules are active; got ${String(leafVersion)}`,
+  );
   return p2mrScriptPathSighash({
     ...rest,
-    leafHash: tapLeafHash(leafScript, DEFAULT_LEAF_VERSION),
+    leafHash: tapLeafHash(leafScript, leafVersion),
     keyVersion: MLDSA44_KEY_VERSION,
   });
 }
@@ -412,8 +425,9 @@ export interface SignMldsa44InputParams extends Mldsa44SighashParams, Mldsa44Sig
 }
 
 /**
- * Sign an input that spends a template leaf. The result is 2420 bytes, or 2421 with the hash type
- * appended when it is not SIGHASH_DEFAULT (an explicit 0x00 is invalid, so it is never appended).
+ * Sign an input that spends a template leaf, or with `leafVersion` 0xe0 the ML-DSA-44 leaf of an S3
+ * output. The result is 2420 bytes, or 2421 with the hash type appended when it is not
+ * SIGHASH_DEFAULT (an explicit 0x00 is invalid, so it is never appended).
  */
 export function signMldsa44Input(params: SignMldsa44InputParams): Uint8Array {
   const { secretKey, extraEntropy, ...sighashParams } = params;

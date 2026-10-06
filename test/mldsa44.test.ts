@@ -33,6 +33,7 @@ import {
   signMldsa44Input,
   splitMldsa44Signature,
   tapLeafHash,
+  TRIPWIRED_LEAF_VERSION,
   withMldsa44FundingLockTime,
 } from '../src/index.js';
 import type { P2mrErrorCode, SpentOutput, Transaction } from '../src/index.js';
@@ -418,6 +419,34 @@ describe('signing an input', () => {
     expect(sig.length).toBe(2420);
     expect(mldsa44Verify(KEY_A.publicKey, m1, sig)).toBe(true);
     expect(mldsa44Verify(KEY_A.publicKey, m0, sig)).toBe(false);
+  });
+
+  it('signs the message of the leaf at version 0xe0 when asked, and of no other version', () => {
+    const atC0 = mldsa44Sighash({ tx, inputIndex: 0, spentOutputs, leafScript });
+    expect(mldsa44Sighash({ tx, inputIndex: 0, spentOutputs, leafScript, leafVersion: 0xc0 })).toEqual(atC0);
+    const atE0 = mldsa44Sighash({ tx, inputIndex: 0, spentOutputs, leafScript, leafVersion: TRIPWIRED_LEAF_VERSION });
+    expect(atE0).toEqual(
+      p2mrScriptPathSighash({ tx, inputIndex: 0, spentOutputs, leafHash: tapLeafHash(leafScript, 0xe0), keyVersion: 1 }),
+    );
+    expect(atE0).not.toEqual(atC0);
+
+    const sig = signMldsa44Input({
+      secretKey: KEY_A.secretKey,
+      tx,
+      inputIndex: 0,
+      spentOutputs,
+      leafScript,
+      leafVersion: TRIPWIRED_LEAF_VERSION,
+    });
+    expect(mldsa44Verify(KEY_A.publicKey, atE0, sig)).toBe(true);
+    expect(mldsa44Verify(KEY_A.publicKey, atC0, sig)).toBe(false);
+
+    for (const leafVersion of [0xc2, 0xe2, 0x50, 0xc1, 0xe1, 0x00]) {
+      expectCode(
+        () => mldsa44Sighash({ tx, inputIndex: 0, spentOutputs, leafScript, leafVersion }),
+        'LEAF_VERSION_NOT_ALLOWED',
+      );
+    }
   });
 
   it('appends an explicit hash type, never SIGHASH_DEFAULT', () => {

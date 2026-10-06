@@ -6,6 +6,12 @@ import { assertLeafVersionShape, tapBranchHash, tapLeafHash } from './tagged.js'
 /** The tapscript leaf version; by default the P2MR wallet interface accepts only this one. */
 export const DEFAULT_LEAF_VERSION = 0xc0;
 
+/**
+ * Leaf version 0xe0, the tripwired leaf of the Ark-0 test signet (experimental, not part of
+ * BIP-360; see tripwire.ts). Like every version other than 0xC0 it is refused by default.
+ */
+export const TRIPWIRED_LEAF_VERSION = 0xe0;
+
 /** A control block carries at most 128 sibling hashes of 32 bytes each, so leaf depth is capped at 128. */
 export const MAX_MERKLE_PATH_LENGTH = 128;
 

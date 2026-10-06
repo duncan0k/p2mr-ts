@@ -36,6 +36,7 @@ export {
   DEFAULT_LEAF_VERSION,
   MAX_MERKLE_PATH_LENGTH,
   normalizeScriptTree,
+  TRIPWIRED_LEAF_VERSION,
 } from './tree.js';
 export type {
   LeafEntry,
