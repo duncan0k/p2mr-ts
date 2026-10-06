@@ -391,6 +391,13 @@ describe('signature messages', () => {
     }
   });
 
+  it('keep their key_version whatever else an untyped caller passes', () => {
+    const extra = { keyVersion: 1, leafHash: new Uint8Array(32), leafVersion: 0xc0 } as object;
+    for (const path of ['schnorr', 'mldsa44'] as const) {
+      expect(tripwiredSighash({ ...KEYS, ...fixture, ...extra, path })).toEqual(tripwiredSighash({ ...KEYS, ...fixture, path }));
+    }
+  });
+
   it('refuse a path that is neither leaf', () => {
     expectCode(
       () => tripwiredSighash({ ...KEYS, ...fixture, path: 'both' as unknown as TripwiredPath }),

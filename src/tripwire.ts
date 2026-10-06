@@ -44,7 +44,7 @@ import {
 import type { P2mrLeafOutput, P2mrOutput } from './output.js';
 import { createP2mrOutput, isP2mrScriptPubKey, parseP2mrScriptPubKey } from './output.js';
 import type { P2mrScriptPathSighashParams } from './sighash.js';
-import { p2mrScriptPathSighash } from './sighash.js';
+import { p2mrScriptPathSighash, TAPSCRIPT_KEY_VERSION } from './sighash.js';
 import { tapBranchHash, tapLeafHash } from './tagged.js';
 import { TRIPWIRED_LEAF_VERSION } from './tree.js';
 import { assembleScriptPathWitness } from './witness.js';
@@ -270,6 +270,7 @@ export function tripwiredSighash(params: TripwiredSighashParams): Uint8Array {
       return p2mrScriptPathSighash({
         ...rest,
         leafHash: tapLeafHash(leaves.schnorr, TRIPWIRED_LEAF_VERSION),
+        keyVersion: TAPSCRIPT_KEY_VERSION,
       });
     case 'mldsa44':
       return mldsa44Sighash({
