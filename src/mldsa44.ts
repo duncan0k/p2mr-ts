@@ -68,7 +68,7 @@ const OP_PUSHBYTES_32 = 0x20;
 const OP_CHECKSIG = 0xac;
 
 /** Hash types BIP-341 allows to appear explicitly; an explicit 0x00 is invalid. */
-const EXPLICIT_HASH_TYPES: ReadonlySet<number> = new Set([0x01, 0x02, 0x03, 0x81, 0x82, 0x83]);
+export const EXPLICIT_HASH_TYPES: ReadonlySet<number> = new Set([0x01, 0x02, 0x03, 0x81, 0x82, 0x83]);
 
 /** Leaf versions in which a node executes OP_CHECKMLDSA44: 0xC0, and 0xe0 once the tripwire rules are active. */
 const MLDSA44_LEAF_VERSIONS: ReadonlySet<number> = new Set([DEFAULT_LEAF_VERSION, TRIPWIRED_LEAF_VERSION]);
@@ -83,7 +83,7 @@ function assertPublicKey(publicKey: Uint8Array): void {
   );
 }
 
-function assertXonly(xonlyPubkey: Uint8Array): void {
+export function assertXonly(xonlyPubkey: Uint8Array): void {
   assert(
     xonlyPubkey.length === 32,
     'INVALID_XONLY_PUBKEY',
@@ -207,11 +207,11 @@ export interface Mldsa44ChainState {
   readonly tipHeight: number | null;
 }
 
-function isHeight(value: unknown): value is number {
+export function isHeight(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
-function buriedHeight(deployments: Record<string, unknown>, name: string): number | null {
+export function buriedHeight(deployments: Record<string, unknown>, name: string): number | null {
   const entry = deployments[name];
   if (typeof entry !== 'object' || entry === null) return null;
   const { type, height } = entry as Record<string, unknown>;
@@ -271,7 +271,7 @@ export function assertMldsa44AddressesAllowed(chain: Mldsa44ChainState): void {
  */
 export type Mldsa44Network = Extract<Network, 'signet' | 'regtest'>;
 
-const MLDSA44_NETWORKS: ReadonlySet<string> = new Set(['signet', 'regtest']);
+export const MLDSA44_NETWORKS: ReadonlySet<string> = new Set(['signet', 'regtest']);
 
 export interface CreateMldsa44OutputOptions {
   readonly publicKey: Uint8Array;

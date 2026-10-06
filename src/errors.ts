@@ -59,7 +59,13 @@ export type P2mrErrorCode =
   | 'MLDSA44_NETWORK_NOT_ALLOWED'
   | 'MLDSA44_ACTIVATION_UNKNOWN'
   | 'MLDSA44_NOT_ACTIVE'
-  | 'MLDSA44_FUNDING_SEQUENCE_FINAL';
+  | 'MLDSA44_FUNDING_SEQUENCE_FINAL'
+  // Tripwired leaves (experimental, Ark-0 signet)
+  | 'TRIPWIRED_NETWORK_NOT_ALLOWED'
+  | 'TRIPWIRED_ACTIVATION_UNKNOWN'
+  | 'TRIPWIRED_NOT_ACTIVE'
+  | 'TRIPWIRED_INVALID_PATH'
+  | 'TRIPWIRED_INVALID_SIGNATURE_SIZE';
 
 export class P2mrError extends Error {
   readonly code: P2mrErrorCode;

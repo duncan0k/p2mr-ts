@@ -170,3 +170,28 @@ export type {
   ParsedMldsa44Leaf,
   SignMldsa44InputParams,
 } from './mldsa44.js';
+
+export {
+  assembleTripwiredWitness,
+  assertTripwiredAddressesAllowed,
+  createTripwiredOutput,
+  tripwireActivationHeight,
+  tripwiredAddressesAllowed,
+  tripwiredMerkleRoot,
+  tripwiredOutputMatches,
+  tripwiredOutputStatus,
+  tripwiredSighash,
+} from './tripwire.js';
+export type {
+  AssembleTripwiredWitnessOptions,
+  CreateTripwiredOutputOptions,
+  TripwireChainState,
+  TripwiredKeys,
+  TripwiredNetwork,
+  TripwiredOutput,
+  TripwiredOutputMatchParams,
+  TripwiredOutputStatus,
+  TripwiredOutputStatusParams,
+  TripwiredPath,
+  TripwiredSighashParams,
+} from './tripwire.js';
