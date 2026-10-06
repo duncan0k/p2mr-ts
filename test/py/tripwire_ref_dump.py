@@ -3,7 +3,8 @@ The S3 output of a key pair, with its two leaves of version 0xe0, computed witho
 
 Reads one JSON object from stdin:
 
-    {"seed": <32-byte ML-DSA-44 seed>, "xonly": <32-byte x-only key>, "hash_types": [n, ...]}
+    {"seed": <32-byte ML-DSA-44 seed>, "xonly": <32-byte x-only key>, "hash_types": [n, ...],
+     "annex_cases": [{"path": "schnorr" or "mldsa44", "hash_type": n, "annex": <annex>}, ...]}
 
 (hex) and prints, as JSON:
 
@@ -15,7 +16,10 @@ Reads one JSON object from stdin:
   reference implementation `reference/python/p2mr.py`;
 - for each hash type, the BIP-342 signature hash (key_version 0) of the Schnorr leaf at versions
   0xe0 and 0xc0, on the transaction pair Core's script tests build for an output of 1 satoshi,
-  from `TaprootSignatureMsg` of the Bitcoin Core v29.0 test framework.
+  from `TaprootSignatureMsg` of the Bitcoin Core v29.0 test framework;
+- for each annex case, the signature hash of the given leaf at version 0xe0 with that annex, from
+  the same function: key_version 0 for the Schnorr leaf, and for the ML-DSA-44 leaf the same
+  message with the key_version byte set to 1, as the rule of OP_CHECKMLDSA44 defines its message.
 
 None of these shares code with this library.
 
@@ -40,6 +44,7 @@ from test_framework.script import TaprootSignatureMsg  # noqa: E402
 
 TRIPWIRED = 0xE0
 TAPSCRIPT = 0xC0
+KEY_VERSIONS = {"schnorr": 0, "mldsa44": 1}
 
 
 def load_reference():
@@ -108,6 +113,23 @@ def main():
             entry[name] = TaggedHash("TapSighash", msg).hex()
         sighashes.append(entry)
 
+    annex_sighashes = []
+    for case in request.get("annex_cases", []):
+        msg = bytearray(TaprootSignatureMsg(
+            tx,
+            [CTxOut(1, spk)],
+            case["hash_type"],
+            0,
+            scriptpath=True,
+            leaf_script=leaves[case["path"]],
+            annex=bytes.fromhex(case["annex"]),
+            leaf_ver=TRIPWIRED,
+        ))
+        # ext = TapLeaf hash || key_version || codesep_pos
+        assert msg[-5] == 0
+        msg[-5] = KEY_VERSIONS[case["path"]]
+        annex_sighashes.append(dict(case, e0=TaggedHash("TapSighash", bytes(msg)).hex()))
+
     json.dump(
         {
             "python": platform.python_version(),
@@ -127,6 +149,7 @@ def main():
                 for hrp in ("tb", "bcrt")
             },
             "sighashes": sighashes,
+            "annex_sighashes": annex_sighashes,
         },
         sys.stdout,
     )

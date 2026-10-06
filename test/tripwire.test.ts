@@ -76,10 +76,18 @@ const SCHNORR_LEAF = concatBytes(Uint8Array.of(0x20), XONLY, Uint8Array.of(0xac)
 const S1 = buildMldsa44LeafScript(KEY.publicKey);
 const S2 = buildMldsa44LeafScript(KEY.publicKey, XONLY);
 
+interface AnnexSighash {
+  readonly path: TripwiredPath;
+  readonly hash_type: number;
+  readonly annex: string;
+  readonly e0: string;
+}
+
 /**
  * The S3 output of KEYS, as test/py/tripwire_ref_dump.py computes it from the BIP-360 reference
  * implementation and the Core v29.0 test framework, sharing no code with this library. The
- * signature hashes are those of the Schnorr leaf on `spendingTx` of its scriptPubKey.
+ * signature hashes are those of the Schnorr leaf on `spendingTx` of its scriptPubKey, and with an
+ * annex those of either leaf at version 0xe0.
  */
 const VECTORS = {
   leafHashes: {
@@ -113,6 +121,20 @@ const VECTORS = {
       c0: 'cbf65e53f0f10037e9fcbb16e28aa94d0e39a8e110c169ec1da9cc2e0a35722c',
     },
   ],
+  annexSighashes: [
+    {
+      path: 'schnorr',
+      hash_type: 0x00,
+      annex: '50',
+      e0: 'f54d6ee9fb8e6117dd35f1627493de8fd0f3b919284926234e772aa40e9d2870',
+    },
+    {
+      path: 'mldsa44',
+      hash_type: 0x83,
+      annex: '5000112233445566778899aabbccddeeff',
+      e0: 'e1c246e189d72c3cca191a6854b27a321f88ad2334c2e1bc59dc247faf68698e',
+    },
+  ] satisfies AnnexSighash[],
 };
 
 /** A one-input, one-output spend of `spk`, the shape a wallet signs. */
@@ -391,6 +413,26 @@ describe('signature messages', () => {
     }
   });
 
+  it('commit to an annex on either leaf, against fixed vectors', () => {
+    for (const { path, hash_type: hashType, annex, e0 } of VECTORS.annexSighashes) {
+      const withAnnex = tripwiredSighash({ ...KEYS, ...fixture, hashType, annex: hexToBytes(annex), path });
+      expect(bytesToHex(withAnnex)).toBe(e0);
+      expect(withAnnex).not.toEqual(tripwiredSighash({ ...KEYS, ...fixture, hashType, path }));
+    }
+    // the signer of the ML-DSA-44 leaf passes the annex on as well
+    const { hash_type: hashType, annex, e0 } = VECTORS.annexSighashes[1] as AnnexSighash;
+    const signature = signMldsa44Input({
+      ...fixture,
+      hashType,
+      annex: hexToBytes(annex),
+      leafScript: S1,
+      leafVersion: E0,
+      secretKey: KEY.secretKey,
+    });
+    expect(signature[2420]).toBe(hashType);
+    expect(mldsa44Verify(KEY.publicKey, hexToBytes(e0), signature.subarray(0, 2420))).toBe(true);
+  });
+
   it('keep their key_version whatever else an untyped caller passes', () => {
     const extra = { keyVersion: 1, leafHash: new Uint8Array(32), leafVersion: 0xc0 } as object;
     for (const path of ['schnorr', 'mldsa44'] as const) {
@@ -534,6 +576,7 @@ interface RefDump {
   control_blocks: string[];
   addresses: typeof VECTORS.addresses;
   sighashes: typeof VECTORS.sighashes;
+  annex_sighashes: typeof VECTORS.annexSighashes;
 }
 
 describe.skipIf(python === null)('fixed vectors against the BIP-360 reference implementation and the Core test framework', () => {
@@ -545,6 +588,7 @@ describe.skipIf(python === null)('fixed vectors against the BIP-360 reference im
         seed: bytesToHex(SEED),
         xonly: bytesToHex(XONLY),
         hash_types: VECTORS.sighashes.map((s) => s.hash_type),
+        annex_cases: VECTORS.annexSighashes.map(({ path, hash_type, annex }) => ({ path, hash_type, annex })),
       }),
     );
     expect(dump.python.startsWith('3.')).toBe(true);
@@ -555,5 +599,6 @@ describe.skipIf(python === null)('fixed vectors against the BIP-360 reference im
     expect(dump.control_blocks).toEqual(VECTORS.controlBlocks);
     expect(dump.addresses).toEqual(VECTORS.addresses);
     expect(dump.sighashes).toEqual(VECTORS.sighashes);
+    expect(dump.annex_sighashes).toEqual(VECTORS.annexSighashes);
   });
 });
