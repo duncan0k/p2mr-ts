@@ -116,7 +116,7 @@ npm run typecheck
 npm test
 ```
 
-Eight layers of coverage:
+Nine layers of coverage:
 
 1. **All 9 cases of `p2mr_construction.json`** (at the pinned commit). The 7 positive cases
    are compared case by case on leaf hashes, merkle root, scriptPubKey, `bip350Address` and
@@ -151,6 +151,8 @@ Eight layers of coverage:
 8. **OP_CHECKMLDSA44 (experimental)**: the unit tests of `src/mldsa44.ts`, and the
    cross-implementation checks against the M1 patch series of Bitcoin Core described in
    the section on OP_CHECKMLDSA44 below.
+9. **Tripwired leaves (experimental)**: the unit tests of `src/tripwire.ts`, and the
+   cross-checks described in the section on tripwired leaves below.
 
 ### How the signature-hash layer is cross-checked (important)
 
@@ -271,6 +273,71 @@ This is agreement between implementations on these inputs. A template leaf prote
 spending path of its own output and nothing else: the signet's blocks are still authorized by
 a classical signature, and none of this is a claim about Bitcoin.
 
+## Experimental: tripwired leaves (version 0xe0) and the S3 template
+
+Leaf version `0xe0`, the *tripwired leaf*, is an experiment of the Ark-0 test signet. It is
+**not part of BIP-360**, nor of any other BIP. From an activation height `H3` fixed in its
+build, a Bitcoin Core node with the M3 patch series runs a P2MR leaf of version `0xe0` by the
+rules of a `0xC0` leaf, `OP_CHECKMLDSA44` included, except for one thing: once either of two
+designated *tripwire outputs* has been spent, from the next block on, `OP_CHECKSIG`,
+`OP_CHECKSIGVERIFY` and `OP_CHECKSIGADD` in these leaves fail the script whenever they meet a
+32-byte key and a non-empty signature. One tripwire output is locked to the BIP-341 NUMS point
+and is never meant to be spent; the other belongs to the signet's operator, who spends it in an
+announced drill. Leaves of version `0xC0` are not affected at any height, and before `H3` a leaf
+of version `0xe0` is not run at all: anyone can spend it.
+
+It is an experimental implementation that follows the tripwire idea (P2XX-T) of Pieter
+Wuille's mail
+[Giving teeth to expected EC disabling: P2XX(-T)(-ML)](https://groups.google.com/g/bitcoindev/c/aWYtPLVPZ3U)
+of 2026-06-25, with two changes: what is constrained is one experimental leaf version, and the
+tripwires are two designated outputs, where the mail's trigger is any input that successfully
+executes `<NUMS> OP_CHECKSIG`. Earlier work includes Anthony Towns's aRsm proof in the same
+thread and Sjors Provoost's demo, [Sjors/bitcoin#121](https://github.com/Sjors/bitcoin/pull/121).
+A drill on this signet does not mean that any elliptic curve key has been broken.
+`src/tripwire.ts` is the wallet side:
+
+- **Leaves**: the TapLeaf hash commits to the leaf version, so a script in a `0xe0` leaf hashes
+  differently from the same script in a `0xC0` leaf, and its control block starts with `0xe1`.
+  Signature messages are those of `0xC0` leaves with that TapLeaf hash: a signature made for one
+  version does not verify in the other.
+- **S3**: `createTripwiredOutput` builds the one template, a tree of exactly two `0xe0` leaves at
+  depth one, `<x-only key> OP_CHECKSIG` and S1. Either leaf spends the output: the Schnorr leaf,
+  the cheaper one, while the checks are on, and the ML-DSA-44 leaf before and after. Like
+  `createMldsa44Output` it builds for `signet` or `regtest` only, and only once the tip is at
+  least `H3 + 6` (`tripwiredAddressesAllowed`). `H3` is read from the node's
+  `getdeploymentinfo` (`tripwireActivationHeight`: the latest of the `p2mr`, `p2mr_mldsa44` and
+  `p2mr_tripwire` heights); unknown state is a refusal. No template puts both checks in one leaf,
+  since once the checks are off such a leaf cannot be spent at all, and no tree has a single
+  leaf, which would be spent without running it. `createP2mrOutput` still refuses leaf version
+  `0xe0`, like any version other than `0xC0`.
+- **Received outputs**: `tripwiredOutputMatches` holds only when an output commits to exactly
+  the S3 tree of the wallet's keys. `tripwiredOutputStatus` counts such an output as constrained
+  once it confirmed at or above `H3` and as pending while it is unconfirmed; everything else is
+  unprotected, at any height. Compute it again after a reorganization.
+- **Funding**: a funding transaction the wallet builds itself takes its lock time from
+  `withMldsa44FundingLockTime(tx, H3)`.
+- **Spending**: `tripwiredSighash` gives the message of either leaf (`key_version` 0 for the
+  Schnorr leaf, 1 for the ML-DSA-44 leaf). The caller makes the BIP-340 signature;
+  `signMldsa44Input` makes the ML-DSA-44 one when given `leafVersion: TRIPWIRED_LEAF_VERSION`.
+  `assembleTripwiredWitness` builds the witness of either leaf from the two keys.
+
+What is cross-checked (`test/tripwire.test.ts` and `test/tripwire-crossimpl.test.ts`):
+
+- the TapLeaf hashes, merkle root, control blocks and addresses of a fixed S3 output, and the
+  messages of its Schnorr leaf at both leaf versions, against the BIP-360 reference
+  implementation and the Bitcoin Core v29.0 test framework;
+- 14 rows in the format of Core's `script_tests.json`, signed by this library for the M3 patch
+  series (`vectors/tripwire_crossimpl_rows.json`, written by
+  `scripts/generate-tripwire-crossimpl.ts`): spends of S3 through either leaf with the checks on
+  and off, signatures made for the other leaf version, a `0xC0` leaf with the checks off, and S2
+  in a `0xe0` leaf. On every row this library reaches the expected verdict, and so does a judge
+  built from the BIP-360 reference implementation, the Core v29.0 test framework and
+  `fips204.py`.
+
+This is agreement between implementations on these inputs. The drill shows how a rule that turns
+the elliptic curve checks off in one kind of leaf behaves on a test network; it is not a claim
+about Bitcoin.
+
 ## Wording for public claims (red lines)
 
 The following claims **must not be used**:
@@ -280,6 +347,9 @@ The following claims **must not be used**:
 - anything implying "verified on a network" or "verified on chain"
 - for OP_CHECKMLDSA44: "part of BIP-360", "quantum-safe Bitcoin", or a network described as
   resistant to quantum attacks
+- for the tripwired leaves: "part of BIP-360" or of BIP-361, a "quantum attack drill", a
+  tripwire that warns of or predicts a quantum computer, the elliptic curve paths of P2MR as a
+  whole being disabled, or any elliptic curve key being broken
 
 Wording that is fine:
 
