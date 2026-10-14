@@ -137,14 +137,24 @@ function isLeafInput(node: unknown): node is ScriptLeafInput {
   );
 }
 
-/** Normalize a script tree from input form, completing all leaf-level validation at this stage. */
-export function normalizeScriptTree(
-  input: unknown,
-  opts: NormalizeTreeOptions = {},
-): ScriptTreeNode {
+/**
+ * Throw TREE_TOO_DEEP when a node sits deeper than any leaf may. BIP-360: the control block holds m
+ * sibling hashes with "m an integer between 0 and 128, inclusive", so a leaf is at depth <= 128 and
+ * any node at depth 129 is already too deep. Checked on the way down, so recursion stays bounded.
+ */
+function assertDepth(depth: number): void {
+  assert(
+    depth <= MAX_MERKLE_PATH_LENGTH,
+    'TREE_TOO_DEEP',
+    `leaf depth ${depth} exceeds the maximum ${MAX_MERKLE_PATH_LENGTH} (a control block is at most 1 + 32*128 bytes)`,
+  );
+}
+
+function normalizeNode(input: unknown, opts: NormalizeTreeOptions, depth: number): ScriptTreeNode {
   if (input === undefined || input === null || input === '') {
     throw new P2mrError('SCRIPT_TREE_REQUIRED', 'P2MR requires a script tree with at least one leaf');
   }
+  assertDepth(depth);
   if (Array.isArray(input)) {
     assert(
       input.length === 2,
@@ -153,8 +163,8 @@ export function normalizeScriptTree(
     );
     return {
       type: 'branch',
-      left: normalizeScriptTree(input[0], opts),
-      right: normalizeScriptTree(input[1], opts),
+      left: normalizeNode(input[0], opts, depth + 1),
+      right: normalizeNode(input[1], opts, depth + 1),
     };
   }
   if (isLeafInput(input)) {
@@ -164,6 +174,14 @@ export function normalizeScriptTree(
     'INVALID_TREE_NODE',
     'tree node is neither a leaf (an object with a script field) nor a branch (an array of length 2)',
   );
+}
+
+/** Normalize a script tree from input form, completing all leaf-level validation at this stage. */
+export function normalizeScriptTree(
+  input: unknown,
+  opts: NormalizeTreeOptions = {},
+): ScriptTreeNode {
+  return normalizeNode(input, opts, 0);
 }
 
 /** Full positional information for one leaf of the tree. */
@@ -191,6 +209,7 @@ interface BuildResult {
 }
 
 function build(node: ScriptTreeNode, depth: number): BuildResult {
+  assertDepth(depth);
   if (node.type === 'leaf') {
     const leafHash = tapLeafHash(node.leaf.script, node.leaf.leafVersion);
     return { root: leafHash, leaves: [{ leaf: node.leaf, leafHash, depth, path: [] }] };
@@ -212,36 +231,41 @@ export function analyzeScriptTree(node: ScriptTreeNode): {
   leaves: LeafEntry[];
 } {
   const { root, leaves } = build(node, 0);
-  const entries: LeafEntry[] = leaves.map((e, index) => {
-    assert(
-      e.path.length <= MAX_MERKLE_PATH_LENGTH,
-      'TREE_TOO_DEEP',
-      `leaf depth ${e.path.length} exceeds the maximum ${MAX_MERKLE_PATH_LENGTH} (a control block is at most 1 + 32*128 bytes)`,
-    );
-    return {
-      index,
-      depth: e.depth,
-      leaf: e.leaf,
-      leafHash: e.leafHash,
-      merklePath: e.path,
-    };
-  });
+  // build() has already enforced the depth limit
+  const entries: LeafEntry[] = leaves.map((e, index) => ({
+    index,
+    depth: e.depth,
+    leaf: e.leaf,
+    leafHash: e.leafHash,
+    merklePath: e.path,
+  }));
   return { merkleRoot: root, leaves: entries };
 }
 
-/** Just the merkle root. */
+/** Just the merkle root. Throws TREE_TOO_DEEP for a leaf deeper than 128. */
 export function computeMerkleRoot(node: ScriptTreeNode): Uint8Array {
   return build(node, 0).root;
 }
 
-/** Collect all leaf hashes in depth-first order (same order as intermediary.leafHashes in the vectors). */
+/**
+ * Collect all leaf hashes in depth-first order (same order as intermediary.leafHashes in the
+ * vectors). Throws TREE_TOO_DEEP for a leaf deeper than 128.
+ */
 export function collectLeafHashes(node: ScriptTreeNode): Uint8Array[] {
   return build(node, 0).leaves.map((e) => e.leafHash);
 }
 
-/** Total number of leaf positions in the tree (duplicate leaves counted once per position). */
-export function countLeafPositions(node: ScriptTreeNode): number {
+function countFrom(node: ScriptTreeNode, depth: number): number {
+  assertDepth(depth);
   return node.type === 'leaf'
     ? 1
-    : countLeafPositions(node.left) + countLeafPositions(node.right);
+    : countFrom(node.left, depth + 1) + countFrom(node.right, depth + 1);
+}
+
+/**
+ * Total number of leaf positions in the tree (duplicate leaves counted once per position). Throws
+ * TREE_TOO_DEEP for a leaf deeper than 128.
+ */
+export function countLeafPositions(node: ScriptTreeNode): number {
+  return countFrom(node, 0);
 }

@@ -8,13 +8,19 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeLeafScript,
   assembleScriptPathWitness,
+  bytesToHex,
+  collectLeafHashes,
+  computeMerkleRoot,
+  countLeafPositions,
   createP2mrOutput,
   hexToBytes,
+  MAX_CONTROL_BLOCK_SIZE,
+  normalizeScriptTree,
   MAX_INITIAL_STACK_ELEMENTS,
   P2mrError,
   scanLeafScript,
 } from '../src/index.js';
-import type { CreateP2mrOutputOptions, P2mrErrorCode, ScriptTreeInput } from '../src/index.js';
+import type { CreateP2mrOutputOptions, P2mrErrorCode, ScriptTreeInput, ScriptTreeNode } from '../src/index.js';
 
 const LEAF_A = { script: `20${'11'.repeat(32)}ac`, leafVersion: 0xc0 };
 const LEAF_B = { script: `20${'22'.repeat(32)}ac`, leafVersion: 0xc0 };
@@ -226,5 +232,71 @@ describe('P2-2: assembleScriptPathWitness binds to the merkle root and enforces 
         allowAnnex: true,
       }),
     ).toHaveLength(3);
+  });
+});
+
+describe('P3-1 / V1: the depth limit of 128 is enforced by every exported tree function', () => {
+  const chainLeaf = (i: number) => ({
+    script: `20${i.toString(16).padStart(2, '0').repeat(32)}ac`,
+    leafVersion: 0xc0,
+  });
+  /** t = L0; for i = 1..depth: t = [L_i, t]. L0 ends up at the given depth. */
+  const chain = (depth: number): ScriptTreeInput => {
+    let t: ScriptTreeInput = chainLeaf(0);
+    for (let i = 1; i <= depth; i++) t = [chainLeaf(i), t];
+    return t;
+  };
+
+  it('a depth-128 chain matches the independently computed root, address and control block size', () => {
+    const out = createP2mrOutput({ scriptTree: chain(128), network: 'regtest' });
+    expect(bytesToHex(out.merkleRoot)).toBe('a85635c68d8424882a41abe7960515dc4f5d7ea97063cfd74d643211bf673b1c');
+    expect(out.address).toBe('bcrt1z4ptrt35dssjgs2jp40nevpg4m3846l4fwp3ul46dvsepr0m88vwqxt0dqy');
+    const l0 = out.leaves.find((l) => bytesToHex(l.script) === chainLeaf(0).script)!;
+    expect(l0.depth).toBe(128);
+    expect(l0.controlBlock).toHaveLength(4097);
+    expect(MAX_CONTROL_BLOCK_SIZE).toBe(4097);
+    expect(bytesToHex(computeMerkleRoot(out.tree))).toBe(bytesToHex(out.merkleRoot));
+  });
+
+  it('wrapping once more (depth 129) throws TREE_TOO_DEEP from createP2mrOutput and computeMerkleRoot', () => {
+    expectCode(() => createP2mrOutput({ scriptTree: chain(129), network: 'regtest' }), 'TREE_TOO_DEEP');
+    expectCode(() => normalizeScriptTree(chain(129)), 'TREE_TOO_DEEP');
+    // A ScriptTreeNode built by hand bypasses normalizeScriptTree
+    const tree128 = normalizeScriptTree(chain(128));
+    const leaf129 = normalizeScriptTree(chainLeaf(129));
+    const tree129: ScriptTreeNode = { type: 'branch', left: leaf129, right: tree128 };
+    expectCode(() => computeMerkleRoot(tree129), 'TREE_TOO_DEEP');
+    expectCode(() => collectLeafHashes(tree129), 'TREE_TOO_DEEP');
+    expectCode(() => countLeafPositions(tree129), 'TREE_TOO_DEEP');
+    expect(countLeafPositions(tree128)).toBe(129);
+  });
+
+  it('a very deep tree throws TREE_TOO_DEEP rather than a RangeError (stack overflow)', () => {
+    const depth = 200_000;
+    let node: ScriptTreeNode = normalizeScriptTree(chainLeaf(0));
+    const sibling = node;
+    for (let i = 0; i < depth; i++) node = { type: 'branch', left: sibling, right: node };
+    expectCode(() => computeMerkleRoot(node), 'TREE_TOO_DEEP');
+    expectCode(() => collectLeafHashes(node), 'TREE_TOO_DEEP');
+
+    let input: ScriptTreeInput = chainLeaf(0);
+    for (let i = 0; i < depth; i++) input = [chainLeaf(1), input];
+    expectCode(() => createP2mrOutput({ scriptTree: input, network: 'regtest' }), 'TREE_TOO_DEEP');
+  });
+});
+
+describe('V2: a 253-byte leaf (CompactSize length prefix fd fd00) hashes as computed independently', () => {
+  it('leaf hashes and root', () => {
+    const s = `4cd8${'aa'.repeat(216)}75${'20'}${'11'.repeat(32)}ac`;
+    expect(hexToBytes(s)).toHaveLength(253);
+    const out = createP2mrOutput({
+      scriptTree: [{ script: s }, { script: `20${'22'.repeat(32)}ac` }],
+      network: 'regtest',
+    });
+    expect(out.leaves.map((l) => bytesToHex(l.leafHash))).toEqual([
+      'ec236ffcb0312fb6f56ce9c24d67bd8137e6e2ac60b0df52f393c924b544e274',
+      '29cfff6f39dce5e4426403ec1dc93f59e3c538141a3612e819d896d17bae94f2',
+    ]);
+    expect(bytesToHex(out.merkleRoot)).toBe('3274d5cab99bcdf48c7c66729de782e22b70ef1abd6f633cc023c2cadec40e2a');
   });
 });
