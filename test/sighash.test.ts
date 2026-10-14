@@ -137,7 +137,7 @@ describe('P2MR script-path signature hash (ext_flag=1, self-generated vectors)',
         spentOutputs: fx.spentOutputs,
         hashType: c.hashType,
         leafHash: hexToBytes(c.leafHash),
-        ...(c.annex === null ? {} : { annex: hexToBytes(c.annex) }),
+        ...(c.annex === null ? {} : { annex: hexToBytes(c.annex), allowAnnex: true }),
       };
       expect(bytesToHex(p2mrScriptPathSighash(params))).toBe(c.sigHash);
       expect(bytesToHex(taprootSigMsg({ ...params, extFlag: 1 }))).toBe(c.sigMsg);
@@ -339,10 +339,10 @@ describe('parameter validation for the signature hash', () => {
 
   it('the annex must start with 0x50', () => {
     expectCode(
-      () => p2mrScriptPathSighash({ ...base, annex: Uint8Array.of(0x51, 0x01) }),
+      () => p2mrScriptPathSighash({ ...base, annex: Uint8Array.of(0x51, 0x01), allowAnnex: true }),
       'INVALID_ANNEX',
     );
-    expectCode(() => p2mrScriptPathSighash({ ...base, annex: new Uint8Array(0) }), 'INVALID_ANNEX');
+    expectCode(() => p2mrScriptPathSighash({ ...base, annex: new Uint8Array(0), allowAnnex: true }), 'INVALID_ANNEX');
   });
 
   it('out-of-range key_version and codesep_pos are rejected', () => {

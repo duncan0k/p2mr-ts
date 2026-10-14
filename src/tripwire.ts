@@ -252,7 +252,7 @@ export function tripwiredOutputStatus(params: TripwiredOutputStatusParams): Trip
 
 export interface TripwiredSighashParams
   extends TripwiredKeys,
-    Omit<P2mrScriptPathSighashParams, 'leafHash' | 'keyVersion'> {
+    Omit<P2mrScriptPathSighashParams, 'leafHash' | 'keyVersion' | 'leafScript' | 'leafVersion'> {
   readonly path: TripwiredPath;
 }
 
@@ -271,6 +271,10 @@ export function tripwiredSighash(params: TripwiredSighashParams): Uint8Array {
         ...rest,
         leafHash: tapLeafHash(leaves.schnorr, TRIPWIRED_LEAF_VERSION),
         keyVersion: TAPSCRIPT_KEY_VERSION,
+        // With the leaf given, a codeseparatorPosition is checked against it: the leaf has no
+        // OP_CODESEPARATOR, so only 0xffffffff is accepted
+        leafScript: leaves.schnorr,
+        leafVersion: TRIPWIRED_LEAF_VERSION,
       });
     case 'mldsa44':
       return mldsa44Sighash({

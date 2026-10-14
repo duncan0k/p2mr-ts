@@ -1,8 +1,9 @@
 import { sha256 } from '@noble/hashes/sha2.js';
-import { concatBytes, serializeVarBytes, u32le, u64le } from './bytes.js';
-import { assert } from './errors.js';
+import { bytesEqual, concatBytes, serializeVarBytes, u32le, u64le } from './bytes.js';
+import { assert, P2mrError } from './errors.js';
 import { isP2mrScriptPubKey } from './output.js';
-import { tapSighash } from './tagged.js';
+import { codeSeparatorPositions } from './script.js';
+import { tapLeafHash, tapSighash } from './tagged.js';
 import type { SpentOutput, Transaction } from './tx.js';
 import { assertAmount, assertTransactionFields, serializeOutPoint, serializeTxOutput } from './tx.js';
 import { ANNEX_PREFIX } from './witness.js';
@@ -29,16 +30,37 @@ export interface TaprootSighashParams {
   readonly spentOutputs: readonly SpentOutput[];
   /** Defaults to SIGHASH_DEFAULT (0x00). */
   readonly hashType?: number;
-  /** Optional annex, which must start with 0x50. */
+  /**
+   * Optional annex, which must start with 0x50. Rejected unless `allowAnnex` is set, the same as in
+   * `assembleScriptPathWitness`: the taproot policy of Bitcoin Core v29.0 rejects transactions
+   * carrying an annex.
+   */
   readonly annex?: Uint8Array;
+  /** Allow `annex`. Defaults to false. */
+  readonly allowAnnex?: boolean;
   /** 0 = key path, 1 = tapscript/P2MR script path. Defaults to 1. */
   readonly extFlag?: 0 | 1;
   /** Required when extFlag=1: the TapLeaf hash of the leaf being executed. */
   readonly leafHash?: Uint8Array;
   /** Defaults to 0x00. */
   readonly keyVersion?: number;
-  /** Defaults to 0xffffffff (no OP_CODESEPARATOR executed). */
+  /**
+   * BIP-342 codesep_pos: the opcode position of the last OP_CODESEPARATOR executed before the
+   * signature opcode, or 0xffffffff if none was executed. Defaults to 0xffffffff.
+   *
+   * When the leaf contains OP_CODESEPARATOR the default is usually wrong: pass the position
+   * explicitly. Passing `leafScript` makes this checked (see there).
+   */
   readonly codeseparatorPosition?: number;
+  /**
+   * Optional (ext_flag=1 only): the leaf script being executed. When given, it must hash to
+   * `leafHash` (with `leafVersion`), and `codeseparatorPosition` is checked against it: it is
+   * required if the script contains OP_CODESEPARATOR, and must be 0xffffffff or the position of one
+   * of its OP_CODESEPARATORs.
+   */
+  readonly leafScript?: Uint8Array;
+  /** Leaf version used with `leafScript` to recompute the leaf hash. Defaults to 0xC0. */
+  readonly leafVersion?: number;
 }
 
 function validate(params: TaprootSighashParams): {
@@ -88,6 +110,11 @@ function validate(params: TaprootSighashParams): {
   let annex: Uint8Array | null = null;
   if (params.annex !== undefined) {
     assert(
+      params.allowAnnex === true,
+      'ANNEX_NOT_ALLOWED',
+      'an annex is rejected by default: the taproot policy of Bitcoin Core v29.0 does not accept transactions carrying one. Pass allowAnnex: true explicitly if you really need a digest that commits to one',
+    );
+    assert(
       params.annex.length > 0 && params.annex[0] === ANNEX_PREFIX,
       'INVALID_ANNEX',
       'annex must be non-empty and start with 0x50',
@@ -117,6 +144,32 @@ function validate(params: TaprootSighashParams): {
     'INVALID_CODESEPARATOR_POSITION',
     `codesep_pos must be a uint32, got ${String(codesep)}`,
   );
+
+  if (extFlag === 1 && params.leafScript !== undefined) {
+    const leafVersion = params.leafVersion ?? 0xc0;
+    assert(
+      bytesEqual(tapLeafHash(params.leafScript, leafVersion), params.leafHash as Uint8Array),
+      'INVALID_LEAF_HASH',
+      'leafHash is not the TapLeaf hash of leafScript (with the given leafVersion)',
+    );
+    const positions = codeSeparatorPositions(params.leafScript);
+    if (params.codeseparatorPosition === undefined) {
+      if (positions.length > 0) {
+        throw new P2mrError(
+          'CODESEPARATOR_POSITION_REQUIRED',
+          `the leaf contains OP_CODESEPARATOR at opcode position(s) ${positions.join(', ')}; pass codeseparatorPosition explicitly ` +
+            '(the position of the last one executed before the signature opcode, or 0xffffffff if none was executed)',
+        );
+      }
+    } else {
+      assert(
+        codesep === NO_CODESEPARATOR || positions.includes(codesep),
+        'INVALID_CODESEPARATOR_POSITION',
+        `codesep_pos ${codesep} is neither 0xffffffff nor the opcode position of an OP_CODESEPARATOR in the leaf` +
+          (positions.length > 0 ? ` (found at ${positions.join(', ')})` : ' (it contains none)'),
+      );
+    }
+  }
 
   return { hashType, extFlag, annex };
 }

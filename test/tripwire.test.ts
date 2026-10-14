@@ -418,9 +418,14 @@ describe('signature messages', () => {
 
   it('commit to an annex on either leaf, against fixed vectors', () => {
     for (const { path, hash_type: hashType, annex, e0 } of VECTORS.annexSighashes) {
-      const withAnnex = tripwiredSighash({ ...KEYS, ...fixture, hashType, annex: hexToBytes(annex), path });
+      const withAnnex = tripwiredSighash({ ...KEYS, ...fixture, hashType, annex: hexToBytes(annex), allowAnnex: true, path });
       expect(bytesToHex(withAnnex)).toBe(e0);
       expect(withAnnex).not.toEqual(tripwiredSighash({ ...KEYS, ...fixture, hashType, path }));
+      // as everywhere else in this library, an annex has to be asked for
+      expectCode(
+        () => tripwiredSighash({ ...KEYS, ...fixture, hashType, annex: hexToBytes(annex), path }),
+        'ANNEX_NOT_ALLOWED',
+      );
     }
     // the signer of the ML-DSA-44 leaf passes the annex on as well
     const { hash_type: hashType, annex, e0 } = VECTORS.annexSighashes[1] as AnnexSighash;
@@ -428,12 +433,23 @@ describe('signature messages', () => {
       ...fixture,
       hashType,
       annex: hexToBytes(annex),
+      allowAnnex: true,
       leafScript: S1,
       leafVersion: E0,
       secretKey: KEY.secretKey,
     });
     expect(signature[2420]).toBe(hashType);
     expect(mldsa44Verify(KEY.publicKey, hexToBytes(e0), signature.subarray(0, 2420))).toBe(true);
+  });
+
+  it('of the Schnorr leaf take no codeseparatorPosition other than 0xffffffff, the leaf having no OP_CODESEPARATOR', () => {
+    expect(tripwiredSighash({ ...KEYS, ...fixture, codeseparatorPosition: 0xffffffff, path: 'schnorr' })).toEqual(
+      tripwiredSighash({ ...KEYS, ...fixture, path: 'schnorr' }),
+    );
+    expectCode(
+      () => tripwiredSighash({ ...KEYS, ...fixture, codeseparatorPosition: 0, path: 'schnorr' }),
+      'INVALID_CODESEPARATOR_POSITION',
+    );
   });
 
   it('keep their key_version whatever else an untyped caller passes', () => {

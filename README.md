@@ -58,7 +58,7 @@ sha256 recorded in [`vectors/SOURCE.md`](vectors/SOURCE.md).
 | `internalPubkey` / `tweak` / `tweakedPubkey` | rejected | none | P2MR has no key path. The witness program is the merkle root itself, so there is no internal pubkey and no taproot tweak. These fields are BIP-341 leftovers in the official vectors. |
 | single-leaf tree (m=0) | rejected | `allowUnsafeSingleLeaf` | Under BIP-360 v0.12.0, a control block with `m=0` succeeds the moment the root matches, **whether or not the script itself executes**. A depth-0 tree is anyone-can-spend. Low-level tooling has to be able to build such a test case; a wallet interface has to refuse it. |
 | leaf version other than 0xC0 | rejected | `allowUnsafeLeafVersion` | The spec text: execution of a future leaf version (anything but `0xC0`) **must succeed**. In other words a non-`0xC0` leaf does not execute the script and succeeds unconditionally, which is again anyone-can-spend. A consensus implementation needs that success case; a wallet must not generate one. |
-| annex | rejected | `allowAnnex` | Consensus permits an annex, but the taproot **policy** in Bitcoin Core v29.0 rejects transactions carrying one -- consensus-valid is not the same as mempool-accepted. The wallet layer produces no annex by default; the signature-hash interface still supports an annex for when the flag is set explicitly. |
+| annex | rejected | `allowAnnex` | Consensus permits an annex, but the taproot **policy** in Bitcoin Core v29.0 rejects transactions carrying one -- consensus-valid is not the same as mempool-accepted. The wallet layer produces no annex by default; both witness assembly and the signature hash require the flag to be set explicitly. |
 | leaf script containing `OP_SUCCESSx` | rejected | `allowOpSuccess` | Under tapscript, hitting an `OP_SUCCESSx` succeeds unconditionally. The scanner decodes by opcode and skips push data -- a raw byte scan would mistake a `0xfe` or `0xbb` inside push data for an OP_SUCCESS. |
 | truncated leaf script (a push runs past the end) | rejected | `allowTruncatedScript` | The script fails to decode, so the leaf can **never** be spent. |
 | leaf script with a push of more than 520 bytes | rejected | `allowOversizedPush` | BIP-342 keeps the 520-byte element limit, and Bitcoin Core checks the push size before it checks whether the branch is executed, so the leaf can **never** be spent, even with the push in an unexecuted `OP_IF` branch. |
@@ -102,7 +102,8 @@ const sighash = p2mrScriptPathSighash({
   inputIndex: 0,
   spentOutputs,             // in one-to-one correspondence with inputs
   leafHash: out.leaves[1].leafHash,
-  // hashType defaults to SIGHASH_DEFAULT(0x00); codesep defaults to 0xffffffff
+  leafScript: out.leaves[1].script, // optional: checks leafHash and codeseparatorPosition
+  // hashType defaults to SIGHASH_DEFAULT(0x00); codeseparatorPosition defaults to 0xffffffff
 });
 
 const witness = assembleScriptPathWitness({
@@ -112,6 +113,22 @@ const witness = assembleScriptPathWitness({
   merkleRoot: out.merkleRoot, // optional: check that leaf + control block commit to this output
 });
 ```
+
+Notes on the signature hash:
+
+- **Hash type and signature length** (BIP-341/342): with `SIGHASH_DEFAULT` (`0x00`) the BIP-340
+  signature is 64 bytes. With any other hash type the hash type byte must be appended to the
+  signature, giving **65 bytes**; a 64-byte signature always means `SIGHASH_DEFAULT`, and a
+  65-byte signature ending in `0x00` is invalid. The library does not sign, so appending the byte
+  is up to the caller.
+- **`codeseparatorPosition`** is BIP-342's `codesep_pos`: the opcode position (not the byte
+  offset) of the last `OP_CODESEPARATOR` executed before the signature opcode, or `0xffffffff`
+  when none was executed. It defaults to `0xffffffff`, which is wrong for a signature checked
+  after an `OP_CODESEPARATOR`. Pass `leafScript` to have it checked: the position is then
+  required when the leaf contains `OP_CODESEPARATOR`, and must be `0xffffffff` or the position
+  of one of them (`codeSeparatorPositions` lists them).
+- **Annex**: like `assembleScriptPathWitness`, the signature hash rejects an `annex` unless
+  `allowAnnex: true` is passed.
 
 `assembleScriptPathWitness` always enforces the BIP-342 limits on the initial stack (at most
 1000 elements, each at most 520 bytes); with `merkleRoot` it also checks that the leaf script and

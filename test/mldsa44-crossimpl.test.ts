@@ -104,7 +104,7 @@ describe('signature messages against the Core test framework', () => {
         spentOutputs,
         hashType: c.hash_type,
         codeseparatorPosition: c.codeseparator_pos,
-        ...(c.annex === null ? {} : { annex: hex(c.annex) }),
+        ...(c.annex === null ? {} : { annex: hex(c.annex), allowAnnex: true }),
       };
       const common = { ...base, extFlag: 1 as const, leafHash: tapLeafHash(leafScript, 0xc0) };
       if (c.msg_key_version_1 === null) {
@@ -205,7 +205,7 @@ function judge(row: ScriptRow): Verdict {
     spentOutputs,
     hashType,
     codeseparatorPosition: codesep,
-    ...(annex === undefined ? {} : { annex }),
+    ...(annex === undefined ? {} : { annex, allowAnnex: true }),
   };
   const message = mldsa44Sighash({ ...params, leafScript: leaf });
   if (!mldsa44Verify(parsed.publicKey, message, sig.subarray(0, 2420))) return 'INVALID';

@@ -9,6 +9,7 @@ import {
   analyzeLeafScript,
   assembleScriptPathWitness,
   bytesToHex,
+  codeSeparatorPositions,
   collectLeafHashes,
   computeMerkleRoot,
   countLeafPositions,
@@ -21,6 +22,7 @@ import {
   p2mrScriptPathSighash,
   serializeOutPoint,
   serializeTxOutput,
+  tapLeafHash,
   MAX_INITIAL_STACK_ELEMENTS,
   P2mrError,
   scanLeafScript,
@@ -399,5 +401,73 @@ describe('P3-3: numeric fields are range-checked instead of reduced modulo 2^32 
     const raw = encodeTransaction(edge);
     expect(decodeTransaction(raw)).toMatchObject({ version: 0xffffffff, locktime: 0xffffffff });
     expect(sighash(edge, [{ amount: 2n ** 64n - 1n, scriptPubKey: p2mr.scriptPubKey }])).toHaveLength(32);
+  });
+});
+
+describe('P3-4: signature hash annex handling and codesep_pos', () => {
+  const p2mr = createP2mrOutput({ scriptTree: TWO_LEAF, network: 'regtest' });
+  const tx: Transaction = {
+    version: 2,
+    locktime: 0,
+    inputs: [{ txid: new Uint8Array(32).fill(0x11), vout: 0, sequence: 0xffffffff }],
+    outputs: [{ amount: 1000n, scriptPubKey: Uint8Array.of(0x51) }],
+  };
+  const base = {
+    tx,
+    inputIndex: 0,
+    spentOutputs: [{ amount: 2000n, scriptPubKey: p2mr.scriptPubKey }],
+    leafHash: p2mr.leaves[0]!.leafHash,
+  };
+  const annex = Uint8Array.of(0x50, 0x01);
+
+  it('an annex is rejected without allowAnnex, as in assembleScriptPathWitness', () => {
+    expectCode(() => p2mrScriptPathSighash({ ...base, annex }), 'ANNEX_NOT_ALLOWED');
+    expectCode(
+      () => assembleScriptPathWitness({ leafScript: p2mr.leaves[0]!.script, controlBlock: p2mr.leaves[0]!.controlBlock, annex }),
+      'ANNEX_NOT_ALLOWED',
+    );
+    const withAnnex = p2mrScriptPathSighash({ ...base, annex, allowAnnex: true });
+    expect(bytesToHex(withAnnex)).not.toBe(bytesToHex(p2mrScriptPathSighash(base)));
+  });
+
+  // <pk> OP_CODESEPARATOR OP_CHECKSIGVERIFY OP_CODESEPARATOR <pk> OP_CHECKSIG: positions 1 and 3
+  const pk = '22'.repeat(32);
+  const codesepLeaf = hexToBytes(`20${pk}abadab20${pk}ac`);
+  const codesepLeafHash = tapLeafHash(codesepLeaf, 0xc0);
+  const codesepBase = { ...base, leafHash: codesepLeafHash, leafScript: codesepLeaf };
+
+  it('codeSeparatorPositions counts opcodes, not bytes (BIP-342), and skips push data', () => {
+    expect(codeSeparatorPositions(codesepLeaf)).toEqual([1, 3]);
+    expect(codeSeparatorPositions(hexToBytes(`01ab`))).toEqual([]);
+    expect(codeSeparatorPositions(hexToBytes(`ab4c01abab`))).toEqual([0, 2]);
+  });
+
+  it('with leafScript containing OP_CODESEPARATOR, codeseparatorPosition is required', () => {
+    expectCode(() => p2mrScriptPathSighash(codesepBase), 'CODESEPARATOR_POSITION_REQUIRED');
+    expect(p2mrScriptPathSighash({ ...codesepBase, codeseparatorPosition: 1 })).toHaveLength(32);
+    expect(p2mrScriptPathSighash({ ...codesepBase, codeseparatorPosition: 3 })).toHaveLength(32);
+    // Explicit 0xffffffff: a signature checked before any OP_CODESEPARATOR executed
+    expect(p2mrScriptPathSighash({ ...codesepBase, codeseparatorPosition: 0xffffffff })).toHaveLength(32);
+    // The digest with leafScript is the same as without it
+    expect(bytesToHex(p2mrScriptPathSighash({ ...codesepBase, codeseparatorPosition: 3 }))).toBe(
+      bytesToHex(p2mrScriptPathSighash({ ...base, leafHash: codesepLeafHash, codeseparatorPosition: 3 })),
+    );
+  });
+
+  it('a position that is not an OP_CODESEPARATOR of the leaf is rejected', () => {
+    expectCode(() => p2mrScriptPathSighash({ ...codesepBase, codeseparatorPosition: 2 }), 'INVALID_CODESEPARATOR_POSITION');
+    // 33 is the byte offset of the first OP_CODESEPARATOR, not its opcode position
+    expectCode(() => p2mrScriptPathSighash({ ...codesepBase, codeseparatorPosition: 33 }), 'INVALID_CODESEPARATOR_POSITION');
+    const plain = { ...base, leafScript: p2mr.leaves[0]!.script };
+    expect(p2mrScriptPathSighash(plain)).toHaveLength(32);
+    expectCode(() => p2mrScriptPathSighash({ ...plain, codeseparatorPosition: 0 }), 'INVALID_CODESEPARATOR_POSITION');
+  });
+
+  it('leafScript must hash to leafHash', () => {
+    expectCode(() => p2mrScriptPathSighash({ ...base, leafScript: codesepLeaf }), 'INVALID_LEAF_HASH');
+    expectCode(
+      () => p2mrScriptPathSighash({ ...codesepBase, codeseparatorPosition: 1, leafVersion: 0xc2 }),
+      'INVALID_LEAF_HASH',
+    );
   });
 });

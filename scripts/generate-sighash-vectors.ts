@@ -144,7 +144,7 @@ export function generateCases(): GeneratedCase[] {
           hashType,
           extFlag: 1 as const,
           leafHash,
-          ...(annexHex === null ? {} : { annex: hexToBytes(annexHex) }),
+          ...(annexHex === null ? {} : { annex: hexToBytes(annexHex), allowAnnex: true }),
         };
         const sigMsg = taprootSigMsg(params);
         cases.push({

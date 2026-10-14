@@ -322,7 +322,7 @@ export function createMldsa44Output(options: CreateMldsa44OutputOptions): Mldsa4
 }
 
 export interface Mldsa44SighashParams
-  extends Omit<P2mrScriptPathSighashParams, 'leafHash' | 'keyVersion'> {
+  extends Omit<P2mrScriptPathSighashParams, 'leafHash' | 'keyVersion' | 'leafScript' | 'leafVersion'> {
   /** The leaf being executed. */
   readonly leafScript: Uint8Array;
   /**

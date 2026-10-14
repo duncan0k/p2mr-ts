@@ -130,3 +130,39 @@ export function scanLeafScript(script: Uint8Array): ScriptScanResult {
   const { opSuccess, truncated } = analyzeLeafScript(script);
   return { opSuccess, truncated };
 }
+
+/** OP_CODESEPARATOR. */
+export const OP_CODESEPARATOR = 0xab;
+
+/**
+ * The opcode positions of every OP_CODESEPARATOR in a script, as BIP-342 counts them for
+ * `codesep_pos`: "The first opcode in a script has a position of 0. A multi-byte push opcode is
+ * counted as one opcode, regardless of the size of data being pushed. Opcodes in parsed but
+ * unexecuted branches count towards this value as well."
+ *
+ * Decoding stops at the first OP_SUCCESSx (the script succeeds there) or where it runs off the end.
+ */
+export function codeSeparatorPositions(script: Uint8Array): number[] {
+  const positions: number[] = [];
+  let i = 0;
+  let position = 0;
+  while (i < script.length) {
+    const opcode = script[i] as number;
+    i += 1;
+    if (isOpSuccess(opcode)) break;
+    if (opcode === OP_CODESEPARATOR) positions.push(position);
+    let dataLen = 0;
+    if (opcode >= 0x01 && opcode <= 0x4b) {
+      dataLen = opcode;
+    } else if (opcode === 0x4c || opcode === 0x4d || opcode === 0x4e) {
+      const sizeLen = opcode === 0x4c ? 1 : opcode === 0x4d ? 2 : 4;
+      if (i + sizeLen > script.length) break;
+      for (let k = 0; k < sizeLen; k++) dataLen += (script[i + k] as number) * 2 ** (8 * k);
+      i += sizeLen;
+    }
+    if (i + dataLen > script.length) break;
+    i += dataLen;
+    position += 1;
+  }
+  return positions;
+}

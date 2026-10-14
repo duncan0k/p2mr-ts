@@ -25,7 +25,14 @@ export {
 
 export { tapBranchHash, tapLeafHash, tapSighash, taggedHash } from './tagged.js';
 
-export { analyzeLeafScript, isOpSuccess, MAX_SCRIPT_ELEMENT_SIZE, scanLeafScript } from './script.js';
+export {
+  analyzeLeafScript,
+  codeSeparatorPositions,
+  isOpSuccess,
+  MAX_SCRIPT_ELEMENT_SIZE,
+  OP_CODESEPARATOR,
+  scanLeafScript,
+} from './script.js';
 export type { LeafScriptAnalysis, OpSuccessHit, OversizedPush, ScriptScanResult } from './script.js';
 
 export {
