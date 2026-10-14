@@ -95,8 +95,9 @@ const KEY_PATH_FIELDS = ['internalPubkey', 'tweak', 'tweakedPubkey'] as const;
  * Three classes of input that construct fine but offer no protection at all when spent are rejected by
  * default -- internal pubkey, single-leaf tree, leaf version other than 0xC0 -- plus leaf scripts
  * that are anyone-can-spend or can never be spent: containing OP_SUCCESSx, truncated, with a push
- * over 520 bytes, or made only of push opcodes. These are construction-interface constraints, not consensus rules: a node
- * only looks at the 32-byte witness program, so do not carry these rejections into consensus tests.
+ * over 520 bytes, containing OP_VERIF or OP_VERNOTIF, or made only of push opcodes. These are
+ * construction-interface constraints, not consensus rules: a node only looks at the 32-byte witness
+ * program, so do not carry these rejections into consensus tests.
  */
 export function createP2mrOutput(options: CreateP2mrOutputOptions): P2mrOutput {
   const bag = options as unknown as Record<string, unknown>;
@@ -138,6 +139,7 @@ export function createP2mrOutput(options: CreateP2mrOutputOptions): P2mrOutput {
     allowOpSuccess: options.allowOpSuccess === true,
     allowTruncatedScript: options.allowTruncatedScript === true,
     allowOversizedPush: options.allowOversizedPush === true,
+    allowOpVerif: options.allowOpVerif === true,
     allowPushOnlyScript: options.allowPushOnlyScript === true,
   };
   const tree = normalizeScriptTree(rawTree, normalizeOptions);

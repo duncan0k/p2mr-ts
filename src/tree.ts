@@ -60,6 +60,11 @@ export interface NormalizeTreeOptions {
    */
   readonly allowOversizedPush?: boolean;
   /**
+   * Allow leaf scripts containing OP_VERIF or OP_VERNOTIF. Defaults to false. Bitcoin Core fails a
+   * script on either of them even when it sits in an unexecuted branch: the leaf can never be spent.
+   */
+  readonly allowOpVerif?: boolean;
+  /**
    * Allow leaf scripts made only of push opcodes (0x00-0x60). Defaults to false. Such a leaf
    * needs no signature: it is anyone-can-spend if its final stack is true, unspendable otherwise.
    */
@@ -116,6 +121,15 @@ function normalizeLeaf(node: ScriptLeafInput, opts: NormalizeTreeOptions): Scrip
       `leaf script pushes ${scan.oversizedPush.size} bytes at offset ${scan.oversizedPush.offset}, more than the ${MAX_SCRIPT_ELEMENT_SIZE}-byte element limit kept by BIP-342. ` +
         'Bitcoin Core checks the push size before fExec, so the script fails even in an unexecuted branch and the leaf can never be spent. ' +
         'Pass allowOversizedPush: true explicitly if you really need it',
+    );
+  }
+  if (scan.opVerif !== null && opts.allowOpVerif !== true) {
+    const { opcode, offset } = scan.opVerif;
+    throw new P2mrError(
+      'OP_VERIF_NOT_ALLOWED',
+      `leaf script contains OP_${opcode === 0x65 ? 'VERIF' : 'VERNOTIF'} (0x${opcode.toString(16)}) at offset ${offset}. ` +
+        'Bitcoin Core evaluates it even in an unexecuted branch and fails the script there, so the leaf can never be spent. ' +
+        'Pass allowOpVerif: true explicitly if you really need it',
     );
   }
   assert(

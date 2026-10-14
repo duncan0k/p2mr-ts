@@ -102,6 +102,18 @@ describe('P2-1 / V8: leaves that are anyone-can-spend or never spendable are rej
       code: 'OVERSIZED_PUSH_NOT_ALLOWED',
       flag: 'allowOversizedPush',
     },
+    {
+      name: 'OP_VERIF in an unexecuted branch (00 63 65 68 + <key> OP_CHECKSIG): never spendable',
+      script: `0063656820${'cc'.repeat(32)}ac`,
+      code: 'OP_VERIF_NOT_ALLOWED',
+      flag: 'allowOpVerif',
+    },
+    {
+      name: 'OP_VERNOTIF after the key check (<key> OP_CHECKSIGVERIFY 66 51): never spendable',
+      script: `20${'cc'.repeat(32)}ad6651`,
+      code: 'OP_VERIF_NOT_ALLOWED',
+      flag: 'allowOpVerif',
+    },
   ] as const;
   const flags = cases.map((c) => c.flag);
 
@@ -141,6 +153,18 @@ describe('P2-1 / V8: leaves that are anyone-can-spend or never spendable are rej
     });
     // With allowOpSuccess the leaf is anyone-can-spend regardless, so no further check applies
     const scriptTree: ScriptTreeInput = [companion, { script: pushFirst, leafVersion: 0xc0 }];
+    expect(createP2mrOutput({ scriptTree, network: 'regtest', allowOpSuccess: true }).leaves).toHaveLength(2);
+  });
+
+  it('OP_VERIF / OP_VERNOTIF are found by opcode, not in push data, and an OP_SUCCESSx outranks them', () => {
+    expect(analyzeLeafScript(hexToBytes(`20${'65'.repeat(32)}ac`)).opVerif).toBeNull();
+    expect(analyzeLeafScript(hexToBytes('4c026566ac')).opVerif).toBeNull();
+    expect(analyzeLeafScript(hexToBytes('0063656668')).opVerif).toEqual({ opcode: 0x65, offset: 2 });
+    expect(analyzeLeafScript(hexToBytes('51636668')).opVerif).toEqual({ opcode: 0x66, offset: 2 });
+    expect(analyzeLeafScript(hexToBytes('5065'))).toMatchObject({ opSuccess: { opcode: 0x50 }, opVerif: null });
+    // An OP_SUCCESSx anywhere makes the leaf anyone-can-spend (BIP-342), so OP_VERIF before it does not matter
+    const scriptTree: ScriptTreeInput = [companion, { script: '6550', leafVersion: 0xc0 }];
+    expectCode(() => createP2mrOutput({ scriptTree, network: 'regtest' }), 'OP_SUCCESS_NOT_ALLOWED');
     expect(createP2mrOutput({ scriptTree, network: 'regtest', allowOpSuccess: true }).leaves).toHaveLength(2);
   });
 

@@ -33,7 +33,13 @@ export {
   OP_CODESEPARATOR,
   scanLeafScript,
 } from './script.js';
-export type { LeafScriptAnalysis, OpSuccessHit, OversizedPush, ScriptScanResult } from './script.js';
+export type {
+  LeafScriptAnalysis,
+  OpSuccessHit,
+  OpVerifHit,
+  OversizedPush,
+  ScriptScanResult,
+} from './script.js';
 
 export {
   analyzeScriptTree,

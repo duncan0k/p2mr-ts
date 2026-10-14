@@ -53,11 +53,22 @@ export const MAX_SCRIPT_ELEMENT_SIZE = 520;
 /** OP_16, the highest opcode that only pushes a constant (0x00-0x60 are all push opcodes). */
 const OP_16 = 0x60;
 
+/** OP_VERIF and OP_VERNOTIF, which fail a script wherever they sit. */
+const OP_VERIF = 0x65;
+const OP_VERNOTIF = 0x66;
+
 export interface OversizedPush {
   /** Byte offset of the push opcode within the script. */
   readonly offset: number;
   /** Number of bytes the opcode pushes. */
   readonly size: number;
+}
+
+export interface OpVerifHit {
+  /** Numeric value of the opcode: 0x65 (OP_VERIF) or 0x66 (OP_VERNOTIF). */
+  readonly opcode: number;
+  /** Byte offset of that opcode within the script. */
+  readonly offset: number;
 }
 
 export interface LeafScriptAnalysis extends ScriptScanResult {
@@ -69,6 +80,14 @@ export interface LeafScriptAnalysis extends ScriptScanResult {
    */
   readonly oversizedPush: OversizedPush | null;
   /**
+   * The first OP_VERIF or OP_VERNOTIF before any OP_SUCCESSx, or null.
+   *
+   * Neither is an OP_SUCCESSx under BIP-342. Bitcoin Core's EvalScript evaluates the opcodes from
+   * OP_IF to OP_ENDIF even in an unexecuted branch, to keep track of the nesting, and fails the
+   * script on these two: the leaf can never be spent, wherever the opcode sits.
+   */
+  readonly opVerif: OpVerifHit | null;
+  /**
    * Every opcode is a push opcode (0x00-0x60). Such a leaf leaves only constants on the stack: it
    * is either anyone-can-spend (a true top element) or never spendable. Always false when the
    * script is truncated or contains OP_SUCCESSx.
@@ -78,13 +97,15 @@ export interface LeafScriptAnalysis extends ScriptScanResult {
 
 /**
  * Decode a leaf script opcode by opcode and report everything the construction interface checks:
- * the first OP_SUCCESSx, truncation, oversized pushes, and whether it is push-only.
+ * the first OP_SUCCESSx, truncation, oversized pushes, OP_VERIF / OP_VERNOTIF, and whether it is
+ * push-only.
  *
  * Mirrors the order of BIP-342: the OP_SUCCESSx pre-scan stops at the first OP_SUCCESSx (later
  * bytes do not matter), and a decoding failure before that point fails the script.
  */
 export function analyzeLeafScript(script: Uint8Array): LeafScriptAnalysis {
   let oversizedPush: OversizedPush | null = null;
+  let opVerif: OpVerifHit | null = null;
   let pushOnly = true;
   let i = 0;
   while (i < script.length) {
@@ -92,9 +113,10 @@ export function analyzeLeafScript(script: Uint8Array): LeafScriptAnalysis {
     const opcode = script[i] as number;
     i += 1;
     if (isOpSuccess(opcode)) {
-      return { opSuccess: { opcode, offset }, truncated: false, oversizedPush, pushOnly: false };
+      return { opSuccess: { opcode, offset }, truncated: false, oversizedPush, opVerif, pushOnly: false };
     }
     if (opcode > OP_16) pushOnly = false;
+    if ((opcode === OP_VERIF || opcode === OP_VERNOTIF) && opVerif === null) opVerif = { opcode, offset };
 
     let dataLen = 0;
     if (opcode >= 0x01 && opcode <= 0x4b) {
@@ -102,7 +124,7 @@ export function analyzeLeafScript(script: Uint8Array): LeafScriptAnalysis {
     } else if (opcode === 0x4c || opcode === 0x4d || opcode === 0x4e) {
       const sizeLen = opcode === 0x4c ? 1 : opcode === 0x4d ? 2 : 4;
       if (i + sizeLen > script.length) {
-        return { opSuccess: null, truncated: true, oversizedPush, pushOnly: false };
+        return { opSuccess: null, truncated: true, oversizedPush, opVerif, pushOnly: false };
       }
       let n = 0;
       for (let k = 0; k < sizeLen; k++) n += (script[i + k] as number) * 2 ** (8 * k);
@@ -111,14 +133,14 @@ export function analyzeLeafScript(script: Uint8Array): LeafScriptAnalysis {
     }
 
     if (i + dataLen > script.length) {
-      return { opSuccess: null, truncated: true, oversizedPush, pushOnly: false };
+      return { opSuccess: null, truncated: true, oversizedPush, opVerif, pushOnly: false };
     }
     if (dataLen > MAX_SCRIPT_ELEMENT_SIZE && oversizedPush === null) {
       oversizedPush = { offset, size: dataLen };
     }
     i += dataLen;
   }
-  return { opSuccess: null, truncated: false, oversizedPush, pushOnly };
+  return { opSuccess: null, truncated: false, oversizedPush, opVerif, pushOnly };
 }
 
 /**

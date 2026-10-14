@@ -62,16 +62,17 @@ sha256 recorded in [`vectors/SOURCE.md`](vectors/SOURCE.md).
 | leaf script containing `OP_SUCCESSx` | rejected | `allowOpSuccess` | Under tapscript, hitting an `OP_SUCCESSx` succeeds unconditionally. The scanner decodes by opcode and skips push data -- a raw byte scan would mistake a `0xfe` or `0xbb` inside push data for an OP_SUCCESS. |
 | truncated leaf script (a push runs past the end) | rejected | `allowTruncatedScript` | The script fails to decode, so the leaf can **never** be spent. |
 | leaf script with a push of more than 520 bytes | rejected | `allowOversizedPush` | BIP-342 keeps the 520-byte element limit, and Bitcoin Core checks the push size before it checks whether the branch is executed, so the leaf can **never** be spent, even with the push in an unexecuted `OP_IF` branch. |
+| leaf script containing `OP_VERIF` or `OP_VERNOTIF` (`0x65`, `0x66`) | rejected | `allowOpVerif` | Neither is an `OP_SUCCESSx`. Bitcoin Core evaluates the opcodes from `OP_IF` to `OP_ENDIF` even in an unexecuted branch and fails the script on these two, so the leaf can **never** be spent, wherever the opcode sits. |
 | push-only leaf script (every opcode in `0x00`-`0x60`) | rejected | `allowPushOnlyScript` | The leaf checks no signature: it is **anyone-can-spend** if it leaves a true value (e.g. `07546170726f6f74` in the official vectors), unspendable otherwise. |
 
-The last three checks apply to leaf version `0xC0` only: BIP-360 does not execute leaves of any
+The last four checks apply to leaf version `0xC0` only: BIP-360 does not execute leaves of any
 other version, which are already gated behind `allowUnsafeLeafVersion`.
 
 The opt-outs are all explicit. The two with `unsafe` in the name in particular have no place
 in a wallet code path, and `allowAnnex` belongs only in test tooling. `allowOpSuccess` and
 `allowPushOnlyScript` likewise produce **anyone-can-spend** outputs, despite having no `unsafe`
-in their names, and `allowTruncatedScript` / `allowOversizedPush` produce leaves that can never
-be spent: none of them belongs in a wallet code path either.
+in their names, and `allowTruncatedScript` / `allowOversizedPush` / `allowOpVerif` produce leaves
+that can never be spent: none of them belongs in a wallet code path either.
 
 ## Usage
 
