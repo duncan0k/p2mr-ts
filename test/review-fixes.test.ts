@@ -87,19 +87,19 @@ describe('P2-1 / V8: leaves that are anyone-can-spend or never spendable are rej
     {
       name: 'pure 32-byte push (20 + 31 bytes + ac): anyone can spend',
       script: `20${'bb'.repeat(31)}ac`,
-      code: 'LEAF_SCRIPT_PUSH_ONLY',
+      code: 'PUSH_ONLY_SCRIPT_NOT_ALLOWED',
       flag: 'allowPushOnlyScript',
     },
     {
       name: 'truncated push (20 + 30 bytes + ac): never spendable',
       script: `20${'bb'.repeat(30)}ac`,
-      code: 'LEAF_SCRIPT_TRUNCATED',
+      code: 'TRUNCATED_SCRIPT_NOT_ALLOWED',
       flag: 'allowTruncatedScript',
     },
     {
       name: '521-byte push (4d0902 + 521 bytes + 7551): never spendable, even unexecuted',
       script: `4d0902${'bb'.repeat(521)}7551`,
-      code: 'LEAF_SCRIPT_PUSH_TOO_LARGE',
+      code: 'OVERSIZED_PUSH_NOT_ALLOWED',
       flag: 'allowOversizedPush',
     },
   ] as const;

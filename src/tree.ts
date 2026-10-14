@@ -106,13 +106,13 @@ function normalizeLeaf(node: ScriptLeafInput, opts: NormalizeTreeOptions): Scrip
   if (leafVersion !== DEFAULT_LEAF_VERSION) return { script, leafVersion };
   assert(
     !scan.truncated || opts.allowTruncatedScript === true,
-    'LEAF_SCRIPT_TRUNCATED',
+    'TRUNCATED_SCRIPT_NOT_ALLOWED',
     'leaf script is truncated: a push runs past the end of the script, so the script fails to decode and the leaf can never be spent. ' +
       'Pass allowTruncatedScript: true explicitly if you really need it',
   );
   if (scan.oversizedPush !== null && opts.allowOversizedPush !== true) {
     throw new P2mrError(
-      'LEAF_SCRIPT_PUSH_TOO_LARGE',
+      'OVERSIZED_PUSH_NOT_ALLOWED',
       `leaf script pushes ${scan.oversizedPush.size} bytes at offset ${scan.oversizedPush.offset}, more than the ${MAX_SCRIPT_ELEMENT_SIZE}-byte element limit kept by BIP-342. ` +
         'Bitcoin Core checks the push size before fExec, so the script fails even in an unexecuted branch and the leaf can never be spent. ' +
         'Pass allowOversizedPush: true explicitly if you really need it',
@@ -120,7 +120,7 @@ function normalizeLeaf(node: ScriptLeafInput, opts: NormalizeTreeOptions): Scrip
   }
   assert(
     !scan.pushOnly || opts.allowPushOnlyScript === true,
-    'LEAF_SCRIPT_PUSH_ONLY',
+    'PUSH_ONLY_SCRIPT_NOT_ALLOWED',
     'leaf script consists only of push opcodes (0x00-0x60), so it checks no signature: it is anyone-can-spend if it leaves a true value, unspendable otherwise. ' +
       'Pass allowPushOnlyScript: true explicitly if you really need it',
   );
