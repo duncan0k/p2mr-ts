@@ -39,6 +39,16 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const HASH_TYPES = [0x00, 0x01, 0x02, 0x03, 0x81, 0x82, 0x83] as const;
 export const ANNEX_HEX = '50deadbeef';
 
+/**
+ * Opt-out flags of the construction vectors the fixture borrows, by vector id, as in
+ * test/construction-vectors.test.ts. A vector missing here gets none, so one whose leaves the
+ * construction interface refuses fails loudly instead of being let through.
+ */
+const VECTOR_FLAGS: Readonly<Record<string, Partial<CreateP2mrOutputOptions>>> = {
+  // Leaf 1 (07546170726f6f74) only pushes 'Taproot': a push-only 0xC0 leaf, anyone-can-spend
+  p2mr_two_leaf_same_version: { allowPushOnlyScript: true },
+};
+
 /** Which fixture input indices are turned into P2MR, and the published construction vector each borrows. */
 export const P2MR_INPUTS = [
   { inputIndex: 0, vectorId: 'p2mr_two_leaf_same_version', leafIndex: 0 },
@@ -88,12 +98,10 @@ export function buildFixture(): P2mrFixture {
   for (const spec of P2MR_INPUTS) {
     const v = construction.test_vectors.find((t) => t.id === spec.vectorId);
     if (!v) throw new Error(`missing construction vector ${spec.vectorId}`);
-    // The vectors include a push-only leaf (p2mr_two_leaf_same_version); the fixture only needs
-    // their roots and leaf hashes, so that construction-interface check is lifted here
     const out = createP2mrOutput({
       network: 'mainnet',
       ...v.given,
-      allowPushOnlyScript: true,
+      ...(VECTOR_FLAGS[spec.vectorId] ?? {}),
     } as CreateP2mrOutputOptions);
     const leaf = out.leaves[spec.leafIndex];
     if (!leaf) throw new Error(`${spec.vectorId} has no leaf at index ${spec.leafIndex}`);
