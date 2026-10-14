@@ -4,7 +4,7 @@ import { assert } from './errors.js';
 import { isP2mrScriptPubKey } from './output.js';
 import { tapSighash } from './tagged.js';
 import type { SpentOutput, Transaction } from './tx.js';
-import { serializeOutPoint, serializeTxOutput } from './tx.js';
+import { assertAmount, assertTransactionFields, serializeOutPoint, serializeTxOutput } from './tx.js';
 import { ANNEX_PREFIX } from './witness.js';
 
 export const SIGHASH_DEFAULT = 0x00;
@@ -73,6 +73,10 @@ function validate(params: TaprootSighashParams): {
     'INVALID_INPUT_INDEX',
     `input index ${inputIndex} out of range (${tx.inputs.length} inputs in total)`,
   );
+  // Every numeric field the digest commits to must hold its value exactly (no modulo 2^32 / 2^64)
+  assertTransactionFields(tx);
+  for (const [i, spent] of spentOutputs.entries()) assertAmount(spent.amount, `amount of spent output ${i}`);
+
   if ((hashType & 3) === SIGHASH_SINGLE) {
     assert(
       inputIndex < tx.outputs.length,
@@ -142,7 +146,7 @@ export function taprootSigMsg(params: TaprootSighashParams): Uint8Array {
   const anyoneCanPay = (hashType & SIGHASH_ANYONECANPAY) !== 0;
   if (!anyoneCanPay) {
     parts.push(sha256(concatBytes(...tx.inputs.map(serializeOutPoint))));
-    parts.push(sha256(concatBytes(...spentOutputs.map((o) => u64le(o.amount)))));
+    parts.push(sha256(concatBytes(...spentOutputs.map((o) => u64le(BigInt(o.amount))))));
     parts.push(sha256(concatBytes(...spentOutputs.map((o) => serializeVarBytes(o.scriptPubKey)))));
     parts.push(sha256(concatBytes(...tx.inputs.map((i) => u32le(i.sequence)))));
   }
@@ -157,7 +161,7 @@ export function taprootSigMsg(params: TaprootSighashParams): Uint8Array {
 
   if (anyoneCanPay) {
     parts.push(serializeOutPoint(input));
-    parts.push(u64le(spent.amount));
+    parts.push(u64le(BigInt(spent.amount)));
     parts.push(serializeVarBytes(spent.scriptPubKey));
     parts.push(u32le(input.sequence));
   } else {

@@ -18,11 +18,21 @@ import {
   hexToBytes,
   MAX_CONTROL_BLOCK_SIZE,
   normalizeScriptTree,
+  p2mrScriptPathSighash,
+  serializeOutPoint,
+  serializeTxOutput,
   MAX_INITIAL_STACK_ELEMENTS,
   P2mrError,
   scanLeafScript,
 } from '../src/index.js';
-import type { CreateP2mrOutputOptions, P2mrErrorCode, ScriptTreeInput, ScriptTreeNode } from '../src/index.js';
+import type {
+  CreateP2mrOutputOptions,
+  P2mrErrorCode,
+  ScriptTreeInput,
+  ScriptTreeNode,
+  SpentOutput,
+  Transaction,
+} from '../src/index.js';
 
 const LEAF_A = { script: `20${'11'.repeat(32)}ac`, leafVersion: 0xc0 };
 const LEAF_B = { script: `20${'22'.repeat(32)}ac`, leafVersion: 0xc0 };
@@ -332,5 +342,62 @@ describe('P3-2 / V7: decodeTransaction rejects non-canonical CompactSize encodin
   it('a non-canonical script length is rejected too', () => {
     const raw = `0200000001${'11'.repeat(32)}00000000fd0000ffffffff01e8030000000000000151` + '00000000';
     expectCode(() => decodeTransaction(hexToBytes(raw)), 'INVALID_TRANSACTION');
+  });
+});
+
+describe('P3-3: numeric fields are range-checked instead of reduced modulo 2^32 / 2^64', () => {
+  const p2mr = createP2mrOutput({ scriptTree: TWO_LEAF, network: 'regtest' });
+  const tx: Transaction = {
+    version: 2,
+    locktime: 0,
+    inputs: [{ txid: new Uint8Array(32).fill(0x11), vout: 0, sequence: 0xffffffff }],
+    outputs: [{ amount: 1000n, scriptPubKey: Uint8Array.of(0x51) }],
+  };
+  const spentOutputs: SpentOutput[] = [{ amount: 2000n, scriptPubKey: p2mr.scriptPubKey }];
+  const sighash = (t: Transaction, spent: readonly SpentOutput[] = spentOutputs) =>
+    p2mrScriptPathSighash({ tx: t, inputIndex: 0, spentOutputs: spent, leafHash: p2mr.leaves[0]!.leafHash });
+  const withInput = (patch: object): Transaction => ({ ...tx, inputs: [{ ...tx.inputs[0]!, ...patch }] });
+  const withOutput = (amount: bigint): Transaction => ({ ...tx, outputs: [{ ...tx.outputs[0]!, amount }] });
+
+  const bad: Array<[string, Transaction]> = [
+    ['vout 2**32', withInput({ vout: 2 ** 32 })],
+    ['vout -1', withInput({ vout: -1 })],
+    ['vout 1.5', withInput({ vout: 1.5 })],
+    ['sequence -1', withInput({ sequence: -1 })],
+    ['sequence 2**32', withInput({ sequence: 2 ** 32 })],
+    ['locktime -1', { ...tx, locktime: -1 }],
+    ['version 2**32', { ...tx, version: 2 ** 32 }],
+    ['version -1', { ...tx, version: -1 }],
+    ['output amount -1n', withOutput(-1n)],
+    ['output amount 2n**64n', withOutput(2n ** 64n)],
+  ];
+
+  for (const [name, t] of bad) {
+    it(`${name}: rejected by encodeTransaction and by the signature hash`, () => {
+      expectCode(() => encodeTransaction(t), 'INVALID_TRANSACTION');
+      expectCode(() => sighash(t), 'INVALID_TRANSACTION');
+    });
+  }
+
+  it('spent output amounts out of range are rejected by the signature hash', () => {
+    expectCode(() => sighash(tx, [{ ...spentOutputs[0]!, amount: -1n }]), 'INVALID_TRANSACTION');
+    expectCode(() => sighash(tx, [{ ...spentOutputs[0]!, amount: 2n ** 64n }]), 'INVALID_TRANSACTION');
+  });
+
+  it('serializeOutPoint and serializeTxOutput check their fields too', () => {
+    expectCode(() => serializeOutPoint({ ...tx.inputs[0]!, vout: 2 ** 32 }), 'INVALID_TRANSACTION');
+    expectCode(() => serializeTxOutput({ amount: -1n, scriptPubKey: Uint8Array.of(0x51) }), 'INVALID_TRANSACTION');
+  });
+
+  it('boundary values are accepted', () => {
+    const edge: Transaction = {
+      version: 0xffffffff,
+      locktime: 0xffffffff,
+      inputs: [{ txid: new Uint8Array(32), vout: 0xffffffff, sequence: 0xffffffff }],
+      outputs: [{ amount: 2n ** 64n - 1n, scriptPubKey: Uint8Array.of(0x51) }],
+    };
+    const raw = encodeTransaction(edge);
+    expect(decodeTransaction(raw)).toMatchObject({ version: 0xffffffff, locktime: 0xffffffff });
+    expect(sighash(edge, [{ amount: 2n ** 64n - 1n, scriptPubKey: p2mr.scriptPubKey }])).toHaveLength(32);
   });
 });

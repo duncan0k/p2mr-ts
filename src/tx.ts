@@ -44,6 +44,22 @@ export interface Transaction {
   readonly outputs: readonly TxOutput[];
 }
 
+/** Largest value an 8-byte amount field can hold. */
+const MAX_UINT64 = 0xffff_ffff_ffff_ffffn;
+
+/**
+ * Throw unless `amount` fits the 8-byte amount field: a bigint (or, for JavaScript callers, a safe
+ * integer) in 0..2^64-1. Serialization would otherwise write it modulo 2^64, so -1n would become
+ * 0xffffffffffffffff.
+ */
+export function assertAmount(amount: unknown, what = 'amount'): void {
+  const ok =
+    typeof amount === 'bigint'
+      ? amount >= 0n && amount <= MAX_UINT64
+      : typeof amount === 'number' && Number.isSafeInteger(amount) && amount >= 0;
+  assert(ok, 'INVALID_TRANSACTION', `${what} must be an integer in 0..2^64-1, got ${String(amount)}`);
+}
+
 /** 36-byte outpoint: 32-byte txid (internal order) + 4-byte LE vout. */
 export function serializeOutPoint(input: TxInput): Uint8Array {
   assert(
@@ -51,12 +67,14 @@ export function serializeOutPoint(input: TxInput): Uint8Array {
     'INVALID_TRANSACTION',
     `txid must be 32 bytes, got ${input.txid.length}`,
   );
+  assert(isUint32(input.vout), 'INVALID_TRANSACTION', `vout must be a uint32, got ${String(input.vout)}`);
   return concatBytes(input.txid, u32le(input.vout));
 }
 
 /** 8-byte LE amount + compact_size-prefixed scriptPubKey. */
 export function serializeTxOutput(output: TxOutput): Uint8Array {
-  return concatBytes(u64le(output.amount), serializeVarBytes(output.scriptPubKey));
+  assertAmount(output.amount, 'output amount');
+  return concatBytes(u64le(BigInt(output.amount)), serializeVarBytes(output.scriptPubKey));
 }
 
 class Reader {
@@ -220,6 +238,7 @@ export function encodeTransaction(
     'witness: true but no input carries a non-empty witness; the BIP-144 segwit marker requires at least one non-empty witness',
   );
 
+  assertTransactionFields(tx);
   const parts: Uint8Array[] = [u32le(tx.version)];
   if (includeWitness) parts.push(Uint8Array.of(0x00, 0x01));
 
@@ -294,6 +313,24 @@ export function assertLockFieldsUint32(tx: Transaction): void {
       `nSequence of input ${i} must be a uint32, got ${String(input.sequence)}`,
     );
   }
+}
+
+/**
+ * Throw unless every fixed-width numeric field of the transaction holds its value exactly: version,
+ * lock time, every vout and nSequence (uint32), and every output amount (uint64). Used by
+ * serialization and by the signature hash, which would otherwise reduce values modulo 2^32 / 2^64.
+ */
+export function assertTransactionFields(tx: Transaction): void {
+  assert(isUint32(tx.version), 'INVALID_TRANSACTION', `version must be a uint32, got ${String(tx.version)}`);
+  assertLockFieldsUint32(tx);
+  for (const [i, input] of tx.inputs.entries()) {
+    assert(
+      isUint32(input.vout),
+      'INVALID_TRANSACTION',
+      `vout of input ${i} must be a uint32, got ${String(input.vout)}`,
+    );
+  }
+  for (const [i, output] of tx.outputs.entries()) assertAmount(output.amount, `amount of output ${i}`);
 }
 
 /**

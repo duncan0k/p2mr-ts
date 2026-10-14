@@ -48,7 +48,23 @@ export function serializeVarBytes(data: Uint8Array): Uint8Array {
   return concatBytes(compactSize(data.length), data);
 }
 
+/**
+ * Fixed-width little-endian writers. They throw on values the width cannot hold instead of
+ * reducing them modulo 2^bits, so a vout of 2^32 or an amount of -1n can never be written as a
+ * different, valid-looking value. Callers validate first to give a field-specific message.
+ */
+function assertUint(n: number | bigint, bits: number): void {
+  const ok =
+    typeof n === 'bigint'
+      ? n >= 0n && n < 1n << BigInt(bits)
+      : Number.isInteger(n) && n >= 0 && n < 2 ** bits;
+  if (!ok) {
+    throw new P2mrError('INVALID_TRANSACTION', `${String(n)} is not a uint${bits}`);
+  }
+}
+
 export function u16le(n: number): Uint8Array {
+  assertUint(n, 16);
   const b = new Uint8Array(2);
   new DataView(b.buffer).setUint16(0, n, true);
   return b;
@@ -56,11 +72,13 @@ export function u16le(n: number): Uint8Array {
 
 export function u32le(n: number): Uint8Array {
   const b = new Uint8Array(4);
-  new DataView(b.buffer).setUint32(0, n >>> 0, true);
+  assertUint(n, 32);
+  new DataView(b.buffer).setUint32(0, n, true);
   return b;
 }
 
 export function u64le(n: bigint): Uint8Array {
+  assertUint(n, 64);
   const b = new Uint8Array(8);
   new DataView(b.buffer).setBigUint64(0, BigInt(n), true);
   return b;
