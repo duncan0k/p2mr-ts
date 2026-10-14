@@ -95,15 +95,33 @@ class Reader {
     return new DataView(b.buffer, b.byteOffset, b.byteLength).getBigUint64(0, true);
   }
 
+  /**
+   * Read a CompactSize, rejecting non-canonical encodings as Bitcoin Core's ReadCompactSize does
+   * ("non-canonical ReadCompactSize()"): a value must use the shortest form, so that decoding and
+   * encoding stay mutually inverse.
+   */
   compactSize(): number {
     const first = this.u8();
     if (first < 0xfd) return first;
+    let v: bigint;
+    let min: bigint;
     if (first === 0xfd) {
       const b = this.take(2);
-      return new DataView(b.buffer, b.byteOffset, b.byteLength).getUint16(0, true);
+      v = BigInt(new DataView(b.buffer, b.byteOffset, b.byteLength).getUint16(0, true));
+      min = 0xfdn;
+    } else if (first === 0xfe) {
+      v = BigInt(this.u32());
+      min = 0x1_0000n;
+    } else {
+      v = this.u64();
+      min = 0x1_0000_0000n;
     }
-    if (first === 0xfe) return this.u32();
-    const v = this.u64();
+    if (v < min) {
+      throw new P2mrError(
+        'INVALID_TRANSACTION',
+        `non-canonical compactSize: ${v} encoded with prefix 0x${first.toString(16)}`,
+      );
+    }
     if (v > BigInt(Number.MAX_SAFE_INTEGER)) {
       throw new P2mrError('INVALID_TRANSACTION', 'compactSize exceeds the safe integer range');
     }

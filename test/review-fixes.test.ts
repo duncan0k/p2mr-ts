@@ -13,6 +13,8 @@ import {
   computeMerkleRoot,
   countLeafPositions,
   createP2mrOutput,
+  decodeTransaction,
+  encodeTransaction,
   hexToBytes,
   MAX_CONTROL_BLOCK_SIZE,
   normalizeScriptTree,
@@ -298,5 +300,37 @@ describe('V2: a 253-byte leaf (CompactSize length prefix fd fd00) hashes as comp
       '29cfff6f39dce5e4426403ec1dc93f59e3c538141a3612e819d896d17bae94f2',
     ]);
     expect(bytesToHex(out.merkleRoot)).toBe('3274d5cab99bcdf48c7c66729de782e22b70ef1abd6f633cc023c2cadec40e2a');
+  });
+});
+
+describe('P3-2 / V7: decodeTransaction rejects non-canonical CompactSize encodings', () => {
+  const tail = `${'11'.repeat(32)}0000000000ffffffff01e8030000000000000151` + '00000000';
+
+  it('the canonical form decodes and re-encodes byte for byte', () => {
+    const raw = hexToBytes(`0200000001${tail}`);
+    expect(bytesToHex(encodeTransaction(decodeTransaction(raw)))).toBe(bytesToHex(raw));
+  });
+
+  it('V7: fd0100 for an input count of 1 throws INVALID_TRANSACTION', () => {
+    expectCode(() => decodeTransaction(hexToBytes(`02000000fd0100${tail}`)), 'INVALID_TRANSACTION');
+  });
+
+  it('every non-minimal width is rejected; the smallest value of each width is accepted', () => {
+    expectCode(() => decodeTransaction(hexToBytes(`02000000fe01000000${tail}`)), 'INVALID_TRANSACTION');
+    expectCode(() => decodeTransaction(hexToBytes(`02000000ff0100000000000000${tail}`)), 'INVALID_TRANSACTION');
+    expectCode(() => decodeTransaction(hexToBytes(`02000000fdfc00${tail}`)), 'INVALID_TRANSACTION');
+    // fdfd00 is canonical (253); it fails later only because the data runs out
+    let thrown: unknown;
+    try {
+      decodeTransaction(hexToBytes(`02000000fdfd00${tail}`));
+    } catch (err) {
+      thrown = err;
+    }
+    expect((thrown as P2mrError).message).toContain('ran out');
+  });
+
+  it('a non-canonical script length is rejected too', () => {
+    const raw = `0200000001${'11'.repeat(32)}00000000fd0000ffffffff01e8030000000000000151` + '00000000';
+    expectCode(() => decodeTransaction(hexToBytes(raw)), 'INVALID_TRANSACTION');
   });
 });
