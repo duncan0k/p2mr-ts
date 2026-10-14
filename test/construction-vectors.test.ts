@@ -23,6 +23,8 @@ const file = loadVectorFile('p2mr_construction.json');
 const VECTOR_FLAGS: Readonly<Record<string, Partial<CreateP2mrOutputOptions>>> = {
   p2mr_single_leaf_script_tree: { allowUnsafeSingleLeaf: true },
   p2mr_different_version_leaves: { allowUnsafeLeafVersion: true },
+  // Leaf 1 (07546170726f6f74) only pushes 'Taproot': a push-only 0xC0 leaf, anyone-can-spend
+  p2mr_two_leaf_same_version: { allowPushOnlyScript: true },
 };
 
 describe('p2mr_construction.json (pinned commit 620871a7)', () => {
@@ -57,6 +59,7 @@ describe('p2mr_construction.json (pinned commit 620871a7)', () => {
         const tree = normalizeScriptTree(givenScriptTree(v.given), {
           allowUnsafeLeafVersion: flags.allowUnsafeLeafVersion === true,
           allowOpSuccess: flags.allowOpSuccess === true,
+          allowPushOnlyScript: flags.allowPushOnlyScript === true,
         });
         expect(collectLeafHashes(tree).map(bytesToHex)).toEqual(v.intermediary?.leafHashes);
         expect(out.leaves.map((l) => bytesToHex(l.leafHash))).toEqual(v.intermediary?.leafHashes);

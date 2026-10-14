@@ -1,6 +1,6 @@
 import { toBytes } from './bytes.js';
 import { assert, P2mrError } from './errors.js';
-import { scanLeafScript } from './script.js';
+import { analyzeLeafScript, MAX_SCRIPT_ELEMENT_SIZE } from './script.js';
 import { assertLeafVersionShape, tapBranchHash, tapLeafHash } from './tagged.js';
 
 /** The tapscript leaf version; by default the P2MR wallet interface accepts only this one. */
@@ -43,8 +43,27 @@ export type ScriptTreeNode =
 export interface NormalizeTreeOptions {
   /** Allow leaf versions other than 0xC0. Defaults to false. */
   readonly allowUnsafeLeafVersion?: boolean;
-  /** Allow leaf scripts containing OP_SUCCESSx. Defaults to false. */
+  /**
+   * Allow leaf scripts containing OP_SUCCESSx. Defaults to false. Such a leaf is anyone-can-spend
+   * (BIP-342: OP_SUCCESSx makes the script succeed unconditionally).
+   */
   readonly allowOpSuccess?: boolean;
+  /**
+   * Allow leaf scripts whose push decoding runs past the end of the script. Defaults to false.
+   * Such a leaf fails to decode, so it can never be spent.
+   */
+  readonly allowTruncatedScript?: boolean;
+  /**
+   * Allow leaf scripts with a single push of more than 520 bytes. Defaults to false. The push-size
+   * check comes before the fExec check in Bitcoin Core, so the leaf fails even when the push sits
+   * in an unexecuted branch: it can never be spent.
+   */
+  readonly allowOversizedPush?: boolean;
+  /**
+   * Allow leaf scripts made only of push opcodes (0x00-0x60). Defaults to false. Such a leaf
+   * needs no signature: it is anyone-can-spend if its final stack is true, unspendable otherwise.
+   */
+  readonly allowPushOnlyScript?: boolean;
 }
 
 function normalizeLeaf(node: ScriptLeafInput, opts: NormalizeTreeOptions): ScriptLeaf {
@@ -67,16 +86,44 @@ function normalizeLeaf(node: ScriptLeafInput, opts: NormalizeTreeOptions): Scrip
       'which is anyone-can-spend. Pass allowUnsafeLeafVersion: true explicitly if you really need it',
   );
 
-  if (opts.allowOpSuccess !== true) {
-    const { opSuccess } = scanLeafScript(script);
-    if (opSuccess !== null) {
+  const scan = analyzeLeafScript(script);
+  if (scan.opSuccess !== null) {
+    const { opSuccess } = scan;
+    if (opts.allowOpSuccess !== true) {
       throw new P2mrError(
         'OP_SUCCESS_NOT_ALLOWED',
         `leaf script contains OP_SUCCESS${opSuccess.opcode} (0x${opSuccess.opcode.toString(16)}) at offset ${opSuccess.offset}, ` +
           'and under tapscript that script succeeds unconditionally, which is anyone-can-spend. Pass allowOpSuccess: true explicitly if you really need it',
       );
     }
+    // An allowed OP_SUCCESSx decides the outcome before anything else is executed (BIP-342), so the
+    // remaining checks do not apply to this leaf
+    return { script, leafVersion };
   }
+  // The checks below are about BIP-342 execution, which only leaf version 0xC0 gets: BIP-360 says
+  // that for future (non-0xC0) leaf versions "the execution must succeed" without running the
+  // script, and such leaves are already gated behind allowUnsafeLeafVersion
+  if (leafVersion !== DEFAULT_LEAF_VERSION) return { script, leafVersion };
+  assert(
+    !scan.truncated || opts.allowTruncatedScript === true,
+    'LEAF_SCRIPT_TRUNCATED',
+    'leaf script is truncated: a push runs past the end of the script, so the script fails to decode and the leaf can never be spent. ' +
+      'Pass allowTruncatedScript: true explicitly if you really need it',
+  );
+  if (scan.oversizedPush !== null && opts.allowOversizedPush !== true) {
+    throw new P2mrError(
+      'LEAF_SCRIPT_PUSH_TOO_LARGE',
+      `leaf script pushes ${scan.oversizedPush.size} bytes at offset ${scan.oversizedPush.offset}, more than the ${MAX_SCRIPT_ELEMENT_SIZE}-byte element limit kept by BIP-342. ` +
+        'Bitcoin Core checks the push size before fExec, so the script fails even in an unexecuted branch and the leaf can never be spent. ' +
+        'Pass allowOversizedPush: true explicitly if you really need it',
+    );
+  }
+  assert(
+    !scan.pushOnly || opts.allowPushOnlyScript === true,
+    'LEAF_SCRIPT_PUSH_ONLY',
+    'leaf script consists only of push opcodes (0x00-0x60), so it checks no signature: it is anyone-can-spend if it leaves a true value, unspendable otherwise. ' +
+      'Pass allowPushOnlyScript: true explicitly if you really need it',
+  );
 
   return { script, leafVersion };
 }

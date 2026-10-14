@@ -45,33 +45,88 @@ export interface ScriptScanResult {
 }
 
 /**
- * Scan a leaf script and return its first OP_SUCCESSx.
- *
- * Returns immediately on OP_SUCCESSx, matching BIP-342: success even if later bytes fail to decode.
+ * BIP-342 keeps the 520-byte limit on stack elements, both for push opcodes and for the initial
+ * stack (MAX_SCRIPT_ELEMENT_SIZE in Bitcoin Core).
  */
-export function scanLeafScript(script: Uint8Array): ScriptScanResult {
+export const MAX_SCRIPT_ELEMENT_SIZE = 520;
+
+/** OP_16, the highest opcode that only pushes a constant (0x00-0x60 are all push opcodes). */
+const OP_16 = 0x60;
+
+export interface OversizedPush {
+  /** Byte offset of the push opcode within the script. */
+  readonly offset: number;
+  /** Number of bytes the opcode pushes. */
+  readonly size: number;
+}
+
+export interface LeafScriptAnalysis extends ScriptScanResult {
+  /**
+   * The first push of more than MAX_SCRIPT_ELEMENT_SIZE bytes before any OP_SUCCESSx, or null.
+   *
+   * Bitcoin Core's EvalScript checks the push size before it looks at fExec, so such a push fails
+   * the script even inside an unexecuted OP_IF branch: the leaf can never be spent.
+   */
+  readonly oversizedPush: OversizedPush | null;
+  /**
+   * Every opcode is a push opcode (0x00-0x60). Such a leaf leaves only constants on the stack: it
+   * is either anyone-can-spend (a true top element) or never spendable. Always false when the
+   * script is truncated or contains OP_SUCCESSx.
+   */
+  readonly pushOnly: boolean;
+}
+
+/**
+ * Decode a leaf script opcode by opcode and report everything the construction interface checks:
+ * the first OP_SUCCESSx, truncation, oversized pushes, and whether it is push-only.
+ *
+ * Mirrors the order of BIP-342: the OP_SUCCESSx pre-scan stops at the first OP_SUCCESSx (later
+ * bytes do not matter), and a decoding failure before that point fails the script.
+ */
+export function analyzeLeafScript(script: Uint8Array): LeafScriptAnalysis {
+  let oversizedPush: OversizedPush | null = null;
+  let pushOnly = true;
   let i = 0;
   while (i < script.length) {
+    const offset = i;
     const opcode = script[i] as number;
     i += 1;
     if (isOpSuccess(opcode)) {
-      return { opSuccess: { opcode, offset: i - 1 }, truncated: false };
+      return { opSuccess: { opcode, offset }, truncated: false, oversizedPush, pushOnly: false };
     }
+    if (opcode > OP_16) pushOnly = false;
 
     let dataLen = 0;
     if (opcode >= 0x01 && opcode <= 0x4b) {
       dataLen = opcode;
     } else if (opcode === 0x4c || opcode === 0x4d || opcode === 0x4e) {
       const sizeLen = opcode === 0x4c ? 1 : opcode === 0x4d ? 2 : 4;
-      if (i + sizeLen > script.length) return { opSuccess: null, truncated: true };
+      if (i + sizeLen > script.length) {
+        return { opSuccess: null, truncated: true, oversizedPush, pushOnly: false };
+      }
       let n = 0;
       for (let k = 0; k < sizeLen; k++) n += (script[i + k] as number) * 2 ** (8 * k);
       i += sizeLen;
       dataLen = n;
     }
 
-    if (i + dataLen > script.length) return { opSuccess: null, truncated: true };
+    if (i + dataLen > script.length) {
+      return { opSuccess: null, truncated: true, oversizedPush, pushOnly: false };
+    }
+    if (dataLen > MAX_SCRIPT_ELEMENT_SIZE && oversizedPush === null) {
+      oversizedPush = { offset, size: dataLen };
+    }
     i += dataLen;
   }
-  return { opSuccess: null, truncated: false };
+  return { opSuccess: null, truncated: false, oversizedPush, pushOnly };
+}
+
+/**
+ * Scan a leaf script and return its first OP_SUCCESSx.
+ *
+ * Returns immediately on OP_SUCCESSx, matching BIP-342: success even if later bytes fail to decode.
+ */
+export function scanLeafScript(script: Uint8Array): ScriptScanResult {
+  const { opSuccess, truncated } = analyzeLeafScript(script);
+  return { opSuccess, truncated };
 }

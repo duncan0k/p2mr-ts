@@ -60,6 +60,12 @@ sha256 recorded in [`vectors/SOURCE.md`](vectors/SOURCE.md).
 | leaf version other than 0xC0 | rejected | `allowUnsafeLeafVersion` | The spec text: execution of a future leaf version (anything but `0xC0`) **must succeed**. In other words a non-`0xC0` leaf does not execute the script and succeeds unconditionally, which is again anyone-can-spend. A consensus implementation needs that success case; a wallet must not generate one. |
 | annex | rejected | `allowAnnex` | Consensus permits an annex, but the taproot **policy** in Bitcoin Core v29.0 rejects transactions carrying one -- consensus-valid is not the same as mempool-accepted. The wallet layer produces no annex by default; the signature-hash interface still supports an annex for when the flag is set explicitly. |
 | leaf script containing `OP_SUCCESSx` | rejected | `allowOpSuccess` | Under tapscript, hitting an `OP_SUCCESSx` succeeds unconditionally. The scanner decodes by opcode and skips push data -- a raw byte scan would mistake a `0xfe` or `0xbb` inside push data for an OP_SUCCESS. |
+| truncated leaf script (a push runs past the end) | rejected | `allowTruncatedScript` | The script fails to decode, so the leaf can **never** be spent. |
+| leaf script with a push of more than 520 bytes | rejected | `allowOversizedPush` | BIP-342 keeps the 520-byte element limit, and Bitcoin Core checks the push size before it checks whether the branch is executed, so the leaf can **never** be spent, even with the push in an unexecuted `OP_IF` branch. |
+| push-only leaf script (every opcode in `0x00`-`0x60`) | rejected | `allowPushOnlyScript` | The leaf checks no signature: it is **anyone-can-spend** if it leaves a true value (e.g. `07546170726f6f74` in the official vectors), unspendable otherwise. |
+
+The last three checks apply to leaf version `0xC0` only: BIP-360 does not execute leaves of any
+other version, which are already gated behind `allowUnsafeLeafVersion`.
 
 The opt-outs are all explicit. The two with `unsafe` in the name in particular have no place
 in a wallet code path, and `allowAnnex` belongs only in test tooling.

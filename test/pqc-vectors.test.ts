@@ -25,6 +25,8 @@ const BASE_FLAGS: Partial<CreateP2mrOutputOptions> = { allowOpSuccess: true };
 const VECTOR_FLAGS: Readonly<Record<string, Partial<CreateP2mrOutputOptions>>> = {
   p2mr_single_leaf_script_tree: { ...BASE_FLAGS, allowUnsafeSingleLeaf: true },
   p2mr_different_version_leaves: { ...BASE_FLAGS, allowUnsafeLeafVersion: true },
+  // Leaf 1 (07546170726f6f74) only pushes 'Taproot': a push-only 0xC0 leaf, anyone-can-spend
+  p2mr_two_leaf_same_version: { ...BASE_FLAGS, allowPushOnlyScript: true },
 };
 
 describe('p2mr_pqc_construction.json (pinned commit 620871a7, construction only, no consensus meaning)', () => {

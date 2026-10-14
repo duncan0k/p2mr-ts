@@ -88,7 +88,13 @@ export function buildFixture(): P2mrFixture {
   for (const spec of P2MR_INPUTS) {
     const v = construction.test_vectors.find((t) => t.id === spec.vectorId);
     if (!v) throw new Error(`missing construction vector ${spec.vectorId}`);
-    const out = createP2mrOutput({ network: 'mainnet', ...v.given } as CreateP2mrOutputOptions);
+    // The vectors include a push-only leaf (p2mr_two_leaf_same_version); the fixture only needs
+    // their roots and leaf hashes, so that construction-interface check is lifted here
+    const out = createP2mrOutput({
+      network: 'mainnet',
+      ...v.given,
+      allowPushOnlyScript: true,
+    } as CreateP2mrOutputOptions);
     const leaf = out.leaves[spec.leafIndex];
     if (!leaf) throw new Error(`${spec.vectorId} has no leaf at index ${spec.leafIndex}`);
     spentOutputs[spec.inputIndex] = {

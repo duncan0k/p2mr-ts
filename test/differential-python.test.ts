@@ -51,6 +51,12 @@ const REFERENCE_SHA256 = createHash('sha256')
 const FLAGS: Readonly<Record<string, Partial<CreateP2mrOutputOptions>>> = {
   'p2mr_construction.json:p2mr_single_leaf_script_tree': { allowUnsafeSingleLeaf: true },
   'p2mr_construction.json:p2mr_different_version_leaves': { allowUnsafeLeafVersion: true },
+  // Leaf 1 (07546170726f6f74) only pushes 'Taproot': a push-only 0xC0 leaf, anyone-can-spend
+  'p2mr_construction.json:p2mr_two_leaf_same_version': { allowPushOnlyScript: true },
+  'p2mr_pqc_construction.json:p2mr_two_leaf_same_version': {
+    allowOpSuccess: true,
+    allowPushOnlyScript: true,
+  },
   'p2mr_pqc_construction.json:p2mr_single_leaf_script_tree': {
     allowUnsafeSingleLeaf: true,
     allowOpSuccess: true,
