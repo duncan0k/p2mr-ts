@@ -157,7 +157,7 @@ npm test
 a transitive dependency of the dev-only test toolchain (`vitest`). It is not a runtime dependency
 and is not shipped with the package.
 
-Nine layers of coverage:
+Ten layers of coverage:
 
 1. **All 9 cases of `p2mr_construction.json`** (at the pinned commit). The 7 positive cases
    are compared case by case on leaf hashes, merkle root, scriptPubKey, `bip350Address` and
@@ -194,6 +194,11 @@ Nine layers of coverage:
    the section on OP_CHECKMLDSA44 below.
 9. **Tripwired leaves (experimental)**: the unit tests of `src/tripwire.ts`, and the
    cross-checks described in the section on tripwired leaves below.
+10. **Review regression tests** (`test/review-fixes.test.ts`): the findings of the review of
+    commit `c2501dff`, with fixtures computed independently by the reviewer -- a depth-128
+    chain tree (root, regtest address, 4097-byte control block; depth 129 rejected), a 253-byte
+    leaf, a non-canonical CompactSize, the leaf-script, stack-limit, root-binding, numeric-range,
+    annex and codesep checks.
 
 ### How the signature-hash layer is cross-checked (important)
 
