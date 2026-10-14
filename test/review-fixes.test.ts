@@ -365,6 +365,26 @@ describe('P3-2 / V7: decodeTransaction rejects non-canonical CompactSize encodin
     expect((thrown as P2mrError).message).toContain('ran out');
   });
 
+  it('both sides of the 0xfe and 0xff widths: one below the width is non-canonical, its smallest value is not', () => {
+    const decodeError = (hex: string): string => {
+      try {
+        decodeTransaction(hexToBytes(`02000000${hex}${tail}`));
+      } catch (err) {
+        expect((err as P2mrError).code).toBe('INVALID_TRANSACTION');
+        return (err as P2mrError).message;
+      }
+      throw new Error(`${hex} decoded`);
+    };
+    // 0xfe: 0xffff is too small for it, 0x10000 is its smallest value
+    expect(decodeError('feffff0000')).toContain('non-canonical');
+    expect(decodeError('fe00000100')).toContain('ran out');
+    // 0xff: 0xffffffff is too small for it, 0x100000000 is its smallest value
+    expect(decodeError('ffffffffff00000000')).toContain('non-canonical');
+    expect(decodeError('ff0000000001000000')).toContain('ran out');
+    // 2^53 is canonical but past the safe integer range
+    expect(decodeError('ff0000000000002000')).toContain('safe integer');
+  });
+
   it('a non-canonical script length is rejected too', () => {
     const raw = `0200000001${'11'.repeat(32)}00000000fd0000ffffffff01e8030000000000000151` + '00000000';
     expectCode(() => decodeTransaction(hexToBytes(raw)), 'INVALID_TRANSACTION');
@@ -392,10 +412,13 @@ describe('P3-3: numeric fields are range-checked instead of reduced modulo 2^32 
     ['sequence -1', withInput({ sequence: -1 })],
     ['sequence 2**32', withInput({ sequence: 2 ** 32 })],
     ['locktime -1', { ...tx, locktime: -1 }],
+    ['locktime 2**32', { ...tx, locktime: 2 ** 32 }],
     ['version 2**32', { ...tx, version: 2 ** 32 }],
     ['version -1', { ...tx, version: -1 }],
     ['output amount -1n', withOutput(-1n)],
     ['output amount 2n**64n', withOutput(2n ** 64n)],
+    // a JavaScript caller can pass a number where the type says bigint
+    ['output amount 1.5', withOutput(1.5 as unknown as bigint)],
   ];
 
   for (const [name, t] of bad) {
@@ -413,6 +436,20 @@ describe('P3-3: numeric fields are range-checked instead of reduced modulo 2^32 
   it('serializeOutPoint and serializeTxOutput check their fields too', () => {
     expectCode(() => serializeOutPoint({ ...tx.inputs[0]!, vout: 2 ** 32 }), 'INVALID_TRANSACTION');
     expectCode(() => serializeTxOutput({ amount: -1n, scriptPubKey: Uint8Array.of(0x51) }), 'INVALID_TRANSACTION');
+  });
+
+  it('zero values are accepted', () => {
+    const zero: Transaction = {
+      version: 0,
+      locktime: 0,
+      inputs: [{ txid: new Uint8Array(32), vout: 0, sequence: 0 }],
+      outputs: [{ amount: 0n, scriptPubKey: Uint8Array.of(0x51) }],
+    };
+    const decoded = decodeTransaction(encodeTransaction(zero));
+    expect(decoded).toMatchObject({ version: 0, locktime: 0 });
+    expect(decoded.inputs[0]).toMatchObject({ vout: 0, sequence: 0 });
+    expect(decoded.outputs[0]?.amount).toBe(0n);
+    expect(sighash(zero, [{ amount: 0n, scriptPubKey: p2mr.scriptPubKey }])).toHaveLength(32);
   });
 
   it('boundary values are accepted', () => {
