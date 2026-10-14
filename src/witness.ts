@@ -1,9 +1,16 @@
 import { assert, P2mrError } from './errors.js';
 import type { ParsedControlBlock } from './controlBlock.js';
-import { parseControlBlock } from './controlBlock.js';
+import { parseControlBlock, verifyControlBlock } from './controlBlock.js';
+import { MAX_SCRIPT_ELEMENT_SIZE } from './script.js';
 
 /** Marker byte that starts an annex. */
 export const ANNEX_PREFIX = 0x50;
+
+/**
+ * BIP-342: the 1000-element limit on stack + altstack (MAX_STACK_SIZE in Bitcoin Core) "is extended
+ * to also apply to the size of the initial stack".
+ */
+export const MAX_INITIAL_STACK_ELEMENTS = 1000;
 
 export interface AssembleScriptPathWitnessOptions {
   /**
@@ -24,10 +31,19 @@ export interface AssembleScriptPathWitnessOptions {
    * explicitly when building test cases.
    */
   readonly allowAnnex?: boolean;
+  /**
+   * The merkle root of the output being spent (the witness program). When given, the leaf script
+   * and control block must commit to it, i.e. the spend would pass the BIP-360 root check.
+   */
+  readonly merkleRoot?: Uint8Array;
 }
 
 /**
  * Assemble the witness stack of a script-path spend: [stack items..., leaf script, control block, (annex)].
+ *
+ * The initial stack (the stack items) always has to fit the BIP-342 limits: at most 1000 elements,
+ * each at most 520 bytes; a larger one fails script execution. With `merkleRoot`, the leaf script
+ * and control block are also checked against the output's merkle root.
  *
  * An annex is covered by the signature and counted towards weight only at the consensus layer,
  * where it is otherwise ignored during validation; the taproot **policy** of Bitcoin Core v29.0
@@ -44,8 +60,40 @@ export function assembleScriptPathWitness(
     'leaf script must not be empty',
   );
 
+  const stack = options.stack ?? [];
+  // BIP-342 resource limits on the initial stack (the witness minus script, control block, annex)
+  assert(
+    stack.length <= MAX_INITIAL_STACK_ELEMENTS,
+    'WITNESS_STACK_TOO_MANY_ELEMENTS',
+    `the initial stack has ${stack.length} elements; BIP-342 allows at most ${MAX_INITIAL_STACK_ELEMENTS}`,
+  );
+  for (const [i, item] of stack.entries()) {
+    assert(
+      item.length <= MAX_SCRIPT_ELEMENT_SIZE,
+      'WITNESS_STACK_ELEMENT_TOO_LARGE',
+      `stack element ${i} is ${item.length} bytes; BIP-342 allows at most ${MAX_SCRIPT_ELEMENT_SIZE} bytes per initial stack element`,
+    );
+  }
+
+  if (options.merkleRoot !== undefined) {
+    assert(
+      options.merkleRoot.length === 32,
+      'INVALID_MERKLE_ROOT',
+      `merkle root must be 32 bytes, got ${options.merkleRoot.length}`,
+    );
+    assert(
+      verifyControlBlock({
+        leafScript: options.leafScript,
+        controlBlock: options.controlBlock,
+        merkleRoot: options.merkleRoot,
+      }),
+      'CONTROL_BLOCK_ROOT_MISMATCH',
+      'the leaf script and control block do not commit to the given merkle root; the spend would fail the BIP-360 root check',
+    );
+  }
+
   const witness: Uint8Array[] = [
-    ...(options.stack ?? []),
+    ...stack,
     options.leafScript,
     options.controlBlock,
   ];

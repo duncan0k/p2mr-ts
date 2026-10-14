@@ -81,6 +81,7 @@ export type {
 export {
   ANNEX_PREFIX,
   assembleScriptPathWitness,
+  MAX_INITIAL_STACK_ELEMENTS,
   validateWitnessShape,
 } from './witness.js';
 export type {

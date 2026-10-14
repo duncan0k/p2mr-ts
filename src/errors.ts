@@ -37,6 +37,9 @@ export type P2mrErrorCode =
   | 'ADDRESS_WRONG_PROGRAM_LENGTH'
   // Witness
   | 'INVALID_ANNEX'
+  | 'CONTROL_BLOCK_ROOT_MISMATCH'
+  | 'WITNESS_STACK_TOO_MANY_ELEMENTS'
+  | 'WITNESS_STACK_ELEMENT_TOO_LARGE'
   // Transaction / signature hash
   | 'INVALID_HASH_TYPE'
   | 'INVALID_EXT_FLAG'

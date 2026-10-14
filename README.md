@@ -109,8 +109,13 @@ const witness = assembleScriptPathWitness({
   stack: [signature],       // this library does not sign; the caller supplies the signature
   leafScript: out.leaves[1].script,
   controlBlock: out.leaves[1].controlBlock,
+  merkleRoot: out.merkleRoot, // optional: check that leaf + control block commit to this output
 });
 ```
+
+`assembleScriptPathWitness` always enforces the BIP-342 limits on the initial stack (at most
+1000 elements, each at most 520 bytes); with `merkleRoot` it also checks that the leaf script and
+control block recompute the output's merkle root.
 
 `network` is required and has no default. BIP-360 is not active on mainnet or testnet: there a
 witness v2 output is an unknown witness version, which BIP-141 leaves **spendable by anyone**.

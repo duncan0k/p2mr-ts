@@ -5,7 +5,15 @@
  * are re-checked here against this library.
  */
 import { describe, expect, it } from 'vitest';
-import { analyzeLeafScript, createP2mrOutput, hexToBytes, P2mrError, scanLeafScript } from '../src/index.js';
+import {
+  analyzeLeafScript,
+  assembleScriptPathWitness,
+  createP2mrOutput,
+  hexToBytes,
+  MAX_INITIAL_STACK_ELEMENTS,
+  P2mrError,
+  scanLeafScript,
+} from '../src/index.js';
 import type { CreateP2mrOutputOptions, P2mrErrorCode, ScriptTreeInput } from '../src/index.js';
 
 const LEAF_A = { script: `20${'11'.repeat(32)}ac`, leafVersion: 0xc0 };
@@ -124,5 +132,99 @@ describe('P2-1 / V8: leaves that are anyone-can-spend or never spendable are rej
     const scriptTree: ScriptTreeInput = [companion, { script: `20${'bb'.repeat(31)}ac`, leafVersion: 0xc2 }];
     expectCode(() => createP2mrOutput({ scriptTree, network: 'regtest' }), 'LEAF_VERSION_NOT_ALLOWED');
     expect(createP2mrOutput({ scriptTree, network: 'regtest', allowUnsafeLeafVersion: true }).leaves).toHaveLength(2);
+  });
+});
+
+describe('P2-2: assembleScriptPathWitness binds to the merkle root and enforces BIP-342 stack limits', () => {
+  const out = createP2mrOutput({ scriptTree: TWO_LEAF, network: 'regtest' });
+  const other = createP2mrOutput({
+    scriptTree: [LEAF_A, { script: `20${'33'.repeat(32)}ac`, leafVersion: 0xc0 }],
+    network: 'regtest',
+  });
+  const leaf = out.leaves[0]!;
+  const sig = new Uint8Array(64).fill(7);
+
+  it('accepts a leaf and control block that commit to the given merkle root', () => {
+    const witness = assembleScriptPathWitness({
+      stack: [sig],
+      leafScript: leaf.script,
+      controlBlock: leaf.controlBlock,
+      merkleRoot: out.merkleRoot,
+    });
+    expect(witness).toEqual([sig, leaf.script, leaf.controlBlock]);
+  });
+
+  it('rejects a control block of another output (CONTROL_BLOCK_ROOT_MISMATCH)', () => {
+    expectCode(
+      () =>
+        assembleScriptPathWitness({
+          stack: [sig],
+          leafScript: leaf.script,
+          controlBlock: leaf.controlBlock,
+          merkleRoot: other.merkleRoot,
+        }),
+      'CONTROL_BLOCK_ROOT_MISMATCH',
+    );
+    // The leaf of position 1 with the control block of position 0
+    expectCode(
+      () =>
+        assembleScriptPathWitness({
+          leafScript: out.leaves[1]!.script,
+          controlBlock: leaf.controlBlock,
+          merkleRoot: out.merkleRoot,
+        }),
+      'CONTROL_BLOCK_ROOT_MISMATCH',
+    );
+  });
+
+  it('rejects a merkle root that is not 32 bytes', () => {
+    expectCode(
+      () =>
+        assembleScriptPathWitness({
+          leafScript: leaf.script,
+          controlBlock: leaf.controlBlock,
+          merkleRoot: out.merkleRoot.subarray(0, 31),
+        }),
+      'INVALID_MERKLE_ROOT',
+    );
+  });
+
+  it('without merkleRoot the binding is not checked (backward compatible)', () => {
+    expect(
+      assembleScriptPathWitness({ leafScript: out.leaves[1]!.script, controlBlock: leaf.controlBlock }),
+    ).toHaveLength(2);
+  });
+
+  it('stack elements: 520 bytes is allowed, 521 bytes is rejected', () => {
+    const base = { leafScript: leaf.script, controlBlock: leaf.controlBlock };
+    expect(assembleScriptPathWitness({ ...base, stack: [new Uint8Array(520)] })).toHaveLength(3);
+    expectCode(
+      () => assembleScriptPathWitness({ ...base, stack: [sig, new Uint8Array(521)] }),
+      'WITNESS_STACK_ELEMENT_TOO_LARGE',
+    );
+  });
+
+  it('stack element count: 1000 is allowed, 1001 is rejected', () => {
+    const base = { leafScript: leaf.script, controlBlock: leaf.controlBlock };
+    expect(MAX_INITIAL_STACK_ELEMENTS).toBe(1000);
+    const full = Array.from({ length: 1000 }, () => new Uint8Array(1));
+    expect(assembleScriptPathWitness({ ...base, stack: full })).toHaveLength(1002);
+    expectCode(
+      () => assembleScriptPathWitness({ ...base, stack: [...full, new Uint8Array(1)] }),
+      'WITNESS_STACK_TOO_MANY_ELEMENTS',
+    );
+  });
+
+  it('the leaf script, control block and annex do not count towards the initial stack limits', () => {
+    // A 4097-byte control block and a long leaf script are not stack elements
+    const longLeaf = hexToBytes(`4d0802${'bb'.repeat(520)}75${'20'}${'11'.repeat(32)}ac`);
+    expect(
+      assembleScriptPathWitness({
+        leafScript: longLeaf,
+        controlBlock: leaf.controlBlock,
+        annex: new Uint8Array(600).fill(0x50),
+        allowAnnex: true,
+      }),
+    ).toHaveLength(3);
   });
 });
