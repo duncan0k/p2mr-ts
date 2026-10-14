@@ -45,7 +45,8 @@ export interface NormalizeTreeOptions {
   readonly allowUnsafeLeafVersion?: boolean;
   /**
    * Allow leaf scripts containing OP_SUCCESSx. Defaults to false. Such a leaf is anyone-can-spend
-   * (BIP-342: OP_SUCCESSx makes the script succeed unconditionally).
+   * (BIP-342: OP_SUCCESSx makes the script succeed unconditionally), whatever else it holds, so
+   * none of the other script checks applies to it.
    */
   readonly allowOpSuccess?: boolean;
   /**
@@ -66,7 +67,8 @@ export interface NormalizeTreeOptions {
   readonly allowOpVerif?: boolean;
   /**
    * Allow leaf scripts made only of push opcodes (0x00-0x60). Defaults to false. Such a leaf
-   * needs no signature: it is anyone-can-spend if its final stack is true, unspendable otherwise.
+   * needs no signature: it is anyone-can-spend if it pushes exactly one value and that value is
+   * true, unspendable otherwise.
    */
   readonly allowPushOnlyScript?: boolean;
 }
@@ -135,7 +137,7 @@ function normalizeLeaf(node: ScriptLeafInput, opts: NormalizeTreeOptions): Scrip
   assert(
     !scan.pushOnly || opts.allowPushOnlyScript === true,
     'PUSH_ONLY_SCRIPT_NOT_ALLOWED',
-    'leaf script consists only of push opcodes (0x00-0x60), so it checks no signature: it is anyone-can-spend if it leaves a true value, unspendable otherwise. ' +
+    'leaf script consists only of push opcodes (0x00-0x60), so it checks no signature: it is anyone-can-spend if it pushes exactly one value and that value is true, unspendable otherwise. ' +
       'Pass allowPushOnlyScript: true explicitly if you really need it',
   );
 

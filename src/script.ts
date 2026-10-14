@@ -76,7 +76,9 @@ export interface LeafScriptAnalysis extends ScriptScanResult {
    * The first push of more than MAX_SCRIPT_ELEMENT_SIZE bytes before any OP_SUCCESSx, or null.
    *
    * Bitcoin Core's EvalScript checks the push size before it looks at fExec, so such a push fails
-   * the script even inside an unexecuted OP_IF branch: the leaf can never be spent.
+   * the script even inside an unexecuted OP_IF branch: unless an OP_SUCCESSx later in the script
+   * makes it succeed first (BIP-342 looks for one before executing anything), the leaf can never
+   * be spent.
    */
   readonly oversizedPush: OversizedPush | null;
   /**
@@ -84,13 +86,15 @@ export interface LeafScriptAnalysis extends ScriptScanResult {
    *
    * Neither is an OP_SUCCESSx under BIP-342. Bitcoin Core's EvalScript evaluates the opcodes from
    * OP_IF to OP_ENDIF even in an unexecuted branch, to keep track of the nesting, and fails the
-   * script on these two: the leaf can never be spent, wherever the opcode sits.
+   * script on these two: unless an OP_SUCCESSx later in the script makes it succeed first, the
+   * leaf can never be spent, wherever the opcode sits.
    */
   readonly opVerif: OpVerifHit | null;
   /**
-   * Every opcode is a push opcode (0x00-0x60). Such a leaf leaves only constants on the stack: it
-   * is either anyone-can-spend (a true top element) or never spendable. Always false when the
-   * script is truncated or contains OP_SUCCESSx.
+   * Every opcode is a push opcode (0x00-0x60). Such a leaf checks no signature. Tapscript wants
+   * exactly one true element on the final stack and a spender can only add elements, so the leaf
+   * is anyone-can-spend if it pushes exactly one value and that value is true, and never
+   * spendable otherwise. Always false when the script is truncated or contains OP_SUCCESSx.
    */
   readonly pushOnly: boolean;
 }
