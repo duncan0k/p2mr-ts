@@ -93,8 +93,9 @@ export interface LeafScriptAnalysis extends ScriptScanResult {
   /**
    * Every opcode is a push opcode (0x00-0x60). Such a leaf checks no signature. Tapscript wants
    * exactly one true element on the final stack and a spender can only add elements, so the leaf
-   * is anyone-can-spend if it pushes exactly one value and that value is true, and never
-   * spendable otherwise. Always false when the script is truncated or contains OP_SUCCESSx.
+   * is anyone-can-spend if it pushes exactly one value, of at most MAX_SCRIPT_ELEMENT_SIZE bytes,
+   * and that value is true, and never spendable otherwise. Always false when the script is
+   * truncated or contains OP_SUCCESSx.
    */
   readonly pushOnly: boolean;
 }

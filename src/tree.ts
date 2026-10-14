@@ -67,8 +67,8 @@ export interface NormalizeTreeOptions {
   readonly allowOpVerif?: boolean;
   /**
    * Allow leaf scripts made only of push opcodes (0x00-0x60). Defaults to false. Such a leaf
-   * needs no signature: it is anyone-can-spend if it pushes exactly one value and that value is
-   * true, unspendable otherwise.
+   * needs no signature: it is anyone-can-spend if it pushes exactly one value, of at most 520
+   * bytes, and that value is true, unspendable otherwise.
    */
   readonly allowPushOnlyScript?: boolean;
 }
@@ -137,7 +137,7 @@ function normalizeLeaf(node: ScriptLeafInput, opts: NormalizeTreeOptions): Scrip
   assert(
     !scan.pushOnly || opts.allowPushOnlyScript === true,
     'PUSH_ONLY_SCRIPT_NOT_ALLOWED',
-    'leaf script consists only of push opcodes (0x00-0x60), so it checks no signature: it is anyone-can-spend if it pushes exactly one value and that value is true, unspendable otherwise. ' +
+    'leaf script consists only of push opcodes (0x00-0x60), so it checks no signature: it is anyone-can-spend if it pushes exactly one value, of at most 520 bytes, and that value is true, unspendable otherwise. ' +
       'Pass allowPushOnlyScript: true explicitly if you really need it',
   );
 
