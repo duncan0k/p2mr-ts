@@ -130,7 +130,10 @@ Notes on the signature hash:
   when none was executed. It defaults to `0xffffffff`, which is wrong for a signature checked
   after an `OP_CODESEPARATOR`. Pass `leafScript` to have it checked: the position is then
   required when the leaf contains `OP_CODESEPARATOR`, and must be `0xffffffff` or the position
-  of one of them (`codeSeparatorPositions` lists them).
+  of one of them (`codeSeparatorPositions` lists them). `mldsa44Sighash` and `tripwiredSighash`
+  always pass their leaf, so the position is always checked there. Byte `0xf0` counts as one
+  opcode and the count goes on past it: the Ark-0 signet executes it as `OP_CHECKMLDSA44`, and
+  where it is an `OP_SUCCESSx` instead the leaf never executes and no position matters.
 - **Annex**: like `assembleScriptPathWitness`, the signature hash rejects an `annex` unless
   `allowAnnex: true` is passed.
 

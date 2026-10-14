@@ -452,6 +452,16 @@ describe('signature messages', () => {
     );
   });
 
+  it('of the ML-DSA-44 leaf take no codeseparatorPosition other than 0xffffffff either', () => {
+    expect(tripwiredSighash({ ...KEYS, ...fixture, codeseparatorPosition: 0xffffffff, path: 'mldsa44' })).toEqual(
+      tripwiredSighash({ ...KEYS, ...fixture, path: 'mldsa44' }),
+    );
+    expectCode(
+      () => tripwiredSighash({ ...KEYS, ...fixture, codeseparatorPosition: 0, path: 'mldsa44' }),
+      'INVALID_CODESEPARATOR_POSITION',
+    );
+  });
+
   it('keep their key_version whatever else an untyped caller passes', () => {
     const extra = { keyVersion: 1, leafHash: new Uint8Array(32), leafVersion: 0xc0 } as object;
     for (const path of ['schnorr', 'mldsa44'] as const) {

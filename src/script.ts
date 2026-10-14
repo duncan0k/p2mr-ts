@@ -157,12 +157,21 @@ export function scanLeafScript(script: Uint8Array): ScriptScanResult {
 export const OP_CODESEPARATOR = 0xab;
 
 /**
+ * Byte 0xf0, OP_CHECKMLDSA44 of the Ark-0 test signet (see mldsa44.ts): an OP_SUCCESSx under
+ * BIP-342, but an executed opcode in a P2MR leaf once the signet's rules are active.
+ */
+const OP_CHECKMLDSA44 = 0xf0;
+
+/**
  * The opcode positions of every OP_CODESEPARATOR in a script, as BIP-342 counts them for
  * `codesep_pos`: "The first opcode in a script has a position of 0. A multi-byte push opcode is
  * counted as one opcode, regardless of the size of data being pushed. Opcodes in parsed but
  * unexecuted branches count towards this value as well."
  *
- * Decoding stops at the first OP_SUCCESSx (the script succeeds there) or where it runs off the end.
+ * Decoding stops where it runs off the end, and at the first OP_SUCCESSx (the script succeeds
+ * there) other than 0xf0. Byte 0xf0 counts as one opcode and the count goes on past it: where it is
+ * OP_CHECKMLDSA44 the opcodes after it are executed, and where it is an OP_SUCCESSx the leaf is
+ * never executed and no codesep_pos matters.
  */
 export function codeSeparatorPositions(script: Uint8Array): number[] {
   const positions: number[] = [];
@@ -171,7 +180,7 @@ export function codeSeparatorPositions(script: Uint8Array): number[] {
   while (i < script.length) {
     const opcode = script[i] as number;
     i += 1;
-    if (isOpSuccess(opcode)) break;
+    if (isOpSuccess(opcode) && opcode !== OP_CHECKMLDSA44) break;
     if (opcode === OP_CODESEPARATOR) positions.push(position);
     let dataLen = 0;
     if (opcode >= 0x01 && opcode <= 0x4b) {

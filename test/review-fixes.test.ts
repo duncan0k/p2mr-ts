@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   analyzeLeafScript,
   assembleScriptPathWitness,
+  buildMldsa44LeafScript,
   bytesToHex,
   codeSeparatorPositions,
   collectLeafHashes,
@@ -18,6 +19,7 @@ import {
   encodeTransaction,
   hexToBytes,
   MAX_CONTROL_BLOCK_SIZE,
+  mldsa44Sighash,
   normalizeScriptTree,
   p2mrScriptPathSighash,
   serializeOutPoint,
@@ -522,6 +524,42 @@ describe('P3-4: signature hash annex handling and codesep_pos', () => {
     const plain = { ...base, leafScript: p2mr.leaves[0]!.script };
     expect(p2mrScriptPathSighash(plain)).toHaveLength(32);
     expectCode(() => p2mrScriptPathSighash({ ...plain, codeseparatorPosition: 0 }), 'INVALID_CODESEPARATOR_POSITION');
+  });
+
+  // S1 (three pushes of the ML-DSA-44 key, then OP_CHECKMLDSA44 = 0xf0: positions 0-3), then
+  // OP_VERIFY OP_CODESEPARATOR <pk> OP_CHECKSIG: the OP_CODESEPARATOR is at position 5
+  const s1 = buildMldsa44LeafScript(new Uint8Array(1312).fill(7));
+  const m1Leaf = hexToBytes(`${bytesToHex(s1)}69ab20${pk}ac`);
+  const m1Base = { ...base, leafHash: tapLeafHash(m1Leaf, 0xc0), leafScript: m1Leaf };
+
+  it('codeSeparatorPositions counts OP_CHECKMLDSA44 (0xf0) as an opcode and goes on past it', () => {
+    expect(codeSeparatorPositions(m1Leaf)).toEqual([5]);
+    expect(codeSeparatorPositions(hexToBytes('abf0ab'))).toEqual([0, 2]);
+    // any other OP_SUCCESSx still ends the scan
+    expect(codeSeparatorPositions(hexToBytes('ab50ab'))).toEqual([0]);
+    expect(codeSeparatorPositions(hexToBytes('abfeab'))).toEqual([0]);
+  });
+
+  it('a codesep_pos after OP_CHECKMLDSA44 is checked like any other', () => {
+    expect(p2mrScriptPathSighash({ ...m1Base, codeseparatorPosition: 5 })).toHaveLength(32);
+    expectCode(() => p2mrScriptPathSighash(m1Base), 'CODESEPARATOR_POSITION_REQUIRED');
+    expectCode(() => p2mrScriptPathSighash({ ...m1Base, codeseparatorPosition: 4 }), 'INVALID_CODESEPARATOR_POSITION');
+  });
+
+  it('mldsa44Sighash checks codeseparatorPosition against its leaf', () => {
+    const spend = { tx, inputIndex: 0, spentOutputs: base.spentOutputs };
+    // a template leaf has no OP_CODESEPARATOR: only the default 0xffffffff
+    expect(mldsa44Sighash({ ...spend, leafScript: s1, codeseparatorPosition: 0xffffffff })).toEqual(
+      mldsa44Sighash({ ...spend, leafScript: s1 }),
+    );
+    expectCode(() => mldsa44Sighash({ ...spend, leafScript: s1, codeseparatorPosition: 0 }), 'INVALID_CODESEPARATOR_POSITION');
+    // OP_CODESEPARATOR in front of the template: position 0
+    const withSeparator = hexToBytes(`ab${bytesToHex(s1)}`);
+    expect(mldsa44Sighash({ ...spend, leafScript: withSeparator, codeseparatorPosition: 0 })).toHaveLength(32);
+    expectCode(() => mldsa44Sighash({ ...spend, leafScript: withSeparator }), 'CODESEPARATOR_POSITION_REQUIRED');
+    // the ML-DSA-44 check of m1Leaf runs before its OP_CODESEPARATOR, so it signs 0xffffffff, explicitly
+    expect(mldsa44Sighash({ ...spend, leafScript: m1Leaf, codeseparatorPosition: 0xffffffff })).toHaveLength(32);
+    expectCode(() => mldsa44Sighash({ ...spend, leafScript: m1Leaf }), 'CODESEPARATOR_POSITION_REQUIRED');
   });
 
   it('leafScript must hash to leafHash', () => {

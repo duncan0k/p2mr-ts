@@ -334,7 +334,9 @@ export interface Mldsa44SighashParams
 
 /**
  * The 32-byte message an OP_CHECKMLDSA44 signature signs: the BIP-341 tapscript signature hash with
- * key_version 1. It commits to the leaf, the hash type, the annex if any and `codeseparatorPosition`.
+ * key_version 1. It commits to the leaf, the hash type, the annex if any and `codeseparatorPosition`,
+ * which is checked against the leaf as `p2mrScriptPathSighash` checks it when given `leafScript`:
+ * a leaf without OP_CODESEPARATOR, like every template, takes only 0xffffffff.
  *
  * The BIP-340 signature of S2 signs the same message with key_version 0, i.e.
  * `p2mrScriptPathSighash` with the leaf hash of the template leaf.
@@ -350,6 +352,8 @@ export function mldsa44Sighash(params: Mldsa44SighashParams): Uint8Array {
     ...rest,
     leafHash: tapLeafHash(leafScript, leafVersion),
     keyVersion: MLDSA44_KEY_VERSION,
+    leafScript,
+    leafVersion,
   });
 }
 
