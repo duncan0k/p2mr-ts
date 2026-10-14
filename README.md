@@ -68,7 +68,10 @@ The last three checks apply to leaf version `0xC0` only: BIP-360 does not execut
 other version, which are already gated behind `allowUnsafeLeafVersion`.
 
 The opt-outs are all explicit. The two with `unsafe` in the name in particular have no place
-in a wallet code path, and `allowAnnex` belongs only in test tooling.
+in a wallet code path, and `allowAnnex` belongs only in test tooling. `allowOpSuccess` and
+`allowPushOnlyScript` likewise produce **anyone-can-spend** outputs, despite having no `unsafe`
+in their names, and `allowTruncatedScript` / `allowOversizedPush` produce leaves that can never
+be spent: none of them belongs in a wallet code path either.
 
 ## Usage
 
@@ -140,6 +143,7 @@ Use `regtest` or a signet that activates BIP-360; `'mainnet'` and `'testnet'` re
 only as explicit values (for example to reproduce the `bc1z` addresses of the official vectors).
 
 Both key names `scriptTree` and `script_tree` are accepted -- the official vectors use both.
+Passing both at once is an error (`CONFLICTING_SCRIPT_TREE`).
 
 ## Tests
 
@@ -148,6 +152,10 @@ npm install
 npm run typecheck
 npm test
 ```
+
+`npm audit` currently reports one high-severity advisory, in `source-map-js` (GHSA-68fv-2mgg-jv7q),
+a transitive dependency of the dev-only test toolchain (`vitest`). It is not a runtime dependency
+and is not shipped with the package.
 
 Nine layers of coverage:
 

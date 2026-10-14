@@ -40,7 +40,7 @@ export function parseP2mrScriptPubKey(scriptPubKey: Uint8Array): Uint8Array {
 export interface CreateP2mrOutputOptions extends NormalizeTreeOptions {
   /** The script tree. Both namings occur in the vectors, so both are accepted here. */
   readonly scriptTree?: ScriptTreeInput | null | '' | undefined;
-  /** snake_case alias for `scriptTree`. */
+  /** snake_case alias for `scriptTree`. Passing both is an error (CONFLICTING_SCRIPT_TREE). */
   readonly script_tree?: ScriptTreeInput | null | '' | undefined;
   /**
    * The network to encode the address for. Required, with no default.
@@ -126,6 +126,12 @@ export function createP2mrOutput(options: CreateP2mrOutputOptions): P2mrOutput {
   );
   const network = rawNetwork as Network;
 
+  // Silently preferring one of the two would build an output from a tree the caller may not expect
+  assert(
+    options.scriptTree === undefined || options.script_tree === undefined,
+    'CONFLICTING_SCRIPT_TREE',
+    'both scriptTree and script_tree are given; pass exactly one of them',
+  );
   const rawTree = options.scriptTree !== undefined ? options.scriptTree : options.script_tree;
   const normalizeOptions: NormalizeTreeOptions = {
     allowUnsafeLeafVersion: options.allowUnsafeLeafVersion === true,

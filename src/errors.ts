@@ -7,6 +7,7 @@ export type P2mrErrorCode =
   // Construction-interface constraints (wallet/construction layer, not consensus rules)
   | 'INTERNAL_PUBKEY_NOT_SUPPORTED'
   | 'SCRIPT_TREE_REQUIRED'
+  | 'CONFLICTING_SCRIPT_TREE'
   | 'SINGLE_LEAF_NOT_ALLOWED'
   | 'LEAF_VERSION_NOT_ALLOWED'
   | 'OP_SUCCESS_NOT_ALLOWED'

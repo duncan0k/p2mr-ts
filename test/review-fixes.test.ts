@@ -471,3 +471,28 @@ describe('P3-4: signature hash annex handling and codesep_pos', () => {
     );
   });
 });
+
+describe('P3-5: scriptTree and script_tree together are rejected', () => {
+  it('both present -> CONFLICTING_SCRIPT_TREE, even when they are equal', () => {
+    const other: ScriptTreeInput = [LEAF_B, LEAF_A];
+    expectCode(
+      () => createP2mrOutput({ scriptTree: TWO_LEAF, script_tree: other, network: 'regtest' }),
+      'CONFLICTING_SCRIPT_TREE',
+    );
+    expectCode(
+      () => createP2mrOutput({ scriptTree: TWO_LEAF, script_tree: TWO_LEAF, network: 'regtest' }),
+      'CONFLICTING_SCRIPT_TREE',
+    );
+    // null / '' still count as present
+    expectCode(
+      () => createP2mrOutput({ scriptTree: TWO_LEAF, script_tree: null, network: 'regtest' }),
+      'CONFLICTING_SCRIPT_TREE',
+    );
+  });
+
+  it('either one alone still works', () => {
+    const a = createP2mrOutput({ scriptTree: TWO_LEAF, network: 'regtest' });
+    const b = createP2mrOutput({ script_tree: TWO_LEAF, network: 'regtest' });
+    expect(bytesToHex(a.merkleRoot)).toBe(bytesToHex(b.merkleRoot));
+  });
+});
