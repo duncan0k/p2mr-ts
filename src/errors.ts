@@ -11,6 +11,7 @@ export type P2mrErrorCode =
   | 'LEAF_VERSION_NOT_ALLOWED'
   | 'OP_SUCCESS_NOT_ALLOWED'
   | 'ANNEX_NOT_ALLOWED'
+  | 'NETWORK_REQUIRED'
   // Structural errors
   | 'INVALID_HEX'
   | 'INVALID_TREE_NODE'

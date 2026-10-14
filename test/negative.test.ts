@@ -17,7 +17,7 @@ import type { CreateP2mrOutputOptions, P2mrErrorCode, ScriptTreeInput } from '..
 const LEAF_A = { script: `20${'11'.repeat(32)}ac`, leafVersion: 192 };
 const LEAF_B = { script: `20${'22'.repeat(32)}ac`, leafVersion: 192 };
 const TWO_LEAF: ScriptTreeInput = [LEAF_A, LEAF_B];
-const ROOT = createP2mrOutput({ scriptTree: TWO_LEAF }).merkleRoot;
+const ROOT = createP2mrOutput({ network: 'regtest', scriptTree: TWO_LEAF }).merkleRoot;
 
 /** Assert that the thrown value is a P2mrError carrying the given code. */
 function expectCode(fn: () => unknown, code: P2mrErrorCode): void {
@@ -36,6 +36,7 @@ describe('negative-case matrix: construction-interface constraints', () => {
     expectCode(
       () =>
         createP2mrOutput({
+          network: 'regtest',
           scriptTree: TWO_LEAF,
           internalPubkey: 'd6889cb081036e0faefa3a35157ad71086b123b2b144b649798b494c300a961d',
         }),
@@ -45,31 +46,31 @@ describe('negative-case matrix: construction-interface constraints', () => {
 
   it('rejects leftover BIP-341 tweak / tweakedPubkey fields', () => {
     expectCode(
-      () => createP2mrOutput({ scriptTree: TWO_LEAF, tweak: '00'.repeat(32) }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: TWO_LEAF, tweak: '00'.repeat(32) }),
       'INTERNAL_PUBKEY_NOT_SUPPORTED',
     );
     expectCode(
-      () => createP2mrOutput({ scriptTree: TWO_LEAF, tweakedPubkey: '00'.repeat(32) }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: TWO_LEAF, tweakedPubkey: '00'.repeat(32) }),
       'INTERNAL_PUBKEY_NOT_SUPPORTED',
     );
   });
 
   it('the internal-pubkey check runs before the script-tree check (same shape as the official misuse vector: both problems present at once)', () => {
     expectCode(
-      () => createP2mrOutput({ internalPubkey: '00'.repeat(32), scriptTree: null }),
+      () => createP2mrOutput({ network: 'regtest', internalPubkey: '00'.repeat(32), scriptTree: null }),
       'INTERNAL_PUBKEY_NOT_SUPPORTED',
     );
   });
 
   it('rejects an empty / null / missing script tree', () => {
-    expectCode(() => createP2mrOutput({ scriptTree: null }), 'SCRIPT_TREE_REQUIRED');
-    expectCode(() => createP2mrOutput({ scriptTree: '' }), 'SCRIPT_TREE_REQUIRED');
-    expectCode(() => createP2mrOutput({} as CreateP2mrOutputOptions), 'SCRIPT_TREE_REQUIRED');
+    expectCode(() => createP2mrOutput({ network: 'regtest', scriptTree: null }), 'SCRIPT_TREE_REQUIRED');
+    expectCode(() => createP2mrOutput({ network: 'regtest', scriptTree: '' }), 'SCRIPT_TREE_REQUIRED');
+    expectCode(() => createP2mrOutput({ network: 'regtest' } as CreateP2mrOutputOptions), 'SCRIPT_TREE_REQUIRED');
   });
 
   it('rejects a single-leaf tree by default (m=0 means anyone-can-spend), allowed once the flag is set explicitly', () => {
-    expectCode(() => createP2mrOutput({ scriptTree: LEAF_A }), 'SINGLE_LEAF_NOT_ALLOWED');
-    const out = createP2mrOutput({ scriptTree: LEAF_A, allowUnsafeSingleLeaf: true });
+    expectCode(() => createP2mrOutput({ network: 'regtest', scriptTree: LEAF_A }), 'SINGLE_LEAF_NOT_ALLOWED');
+    const out = createP2mrOutput({ network: 'regtest', scriptTree: LEAF_A, allowUnsafeSingleLeaf: true });
     expect(out.leaves).toHaveLength(1);
     expect(out.leaves[0]!.merklePath).toHaveLength(0);
     expect(out.leaves[0]!.controlBlock).toHaveLength(1);
@@ -78,43 +79,43 @@ describe('negative-case matrix: construction-interface constraints', () => {
 
   it('rejects non-0xC0 leaf versions by default, allowed once the flag is set explicitly', () => {
     const tree: ScriptTreeInput = [LEAF_A, { script: '06424950333431', leafVersion: 250 }];
-    expectCode(() => createP2mrOutput({ scriptTree: tree }), 'LEAF_VERSION_NOT_ALLOWED');
-    const out = createP2mrOutput({ scriptTree: tree, allowUnsafeLeafVersion: true });
+    expectCode(() => createP2mrOutput({ network: 'regtest', scriptTree: tree }), 'LEAF_VERSION_NOT_ALLOWED');
+    const out = createP2mrOutput({ network: 'regtest', scriptTree: tree, allowUnsafeLeafVersion: true });
     expect(out.leaves[1]!.leafVersion).toBe(250);
   });
 
   it('rejects leaf scripts containing OP_SUCCESSx by default, allowed once the flag is set explicitly', () => {
     const tree: ScriptTreeInput = [LEAF_A, { script: `20${'33'.repeat(32)}7f`, leafVersion: 192 }];
-    expectCode(() => createP2mrOutput({ scriptTree: tree }), 'OP_SUCCESS_NOT_ALLOWED');
-    expect(createP2mrOutput({ scriptTree: tree, allowOpSuccess: true }).leaves).toHaveLength(2);
+    expectCode(() => createP2mrOutput({ network: 'regtest', scriptTree: tree }), 'OP_SUCCESS_NOT_ALLOWED');
+    expect(createP2mrOutput({ network: 'regtest', scriptTree: tree, allowOpSuccess: true }).leaves).toHaveLength(2);
   });
 
   it('rejects invalid leaf versions: odd, 0x50, out of range', () => {
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, { script: '51', leafVersion: 0xc1 }] }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, { script: '51', leafVersion: 0xc1 }] }),
       'INVALID_LEAF_VERSION',
     );
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, { script: '51', leafVersion: 0x50 }] }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, { script: '51', leafVersion: 0x50 }] }),
       'INVALID_LEAF_VERSION',
     );
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, { script: '51', leafVersion: 256 }] }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, { script: '51', leafVersion: 256 }] }),
       'INVALID_LEAF_VERSION',
     );
   });
 
   it('rejects empty leaf scripts and non-binary branches', () => {
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, { script: '', leafVersion: 192 }] }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, { script: '', leafVersion: 192 }] }),
       'INVALID_LEAF_SCRIPT',
     );
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A] as unknown as ScriptTreeInput }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A] as unknown as ScriptTreeInput }),
       'INVALID_BRANCH_ARITY',
     );
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, LEAF_B, LEAF_A] as unknown as ScriptTreeInput }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, LEAF_B, LEAF_A] as unknown as ScriptTreeInput }),
       'INVALID_BRANCH_ARITY',
     );
   });
@@ -124,7 +125,7 @@ describe('negative-case matrix: construction-interface constraints', () => {
     for (let i = 0; i <= MAX_MERKLE_PATH_LENGTH; i++) {
       deep = [{ script: `20${i.toString(16).padStart(2, '0').repeat(32)}ac` }, deep];
     }
-    expectCode(() => createP2mrOutput({ scriptTree: deep }), 'TREE_TOO_DEEP');
+    expectCode(() => createP2mrOutput({ network: 'regtest', scriptTree: deep }), 'TREE_TOO_DEEP');
   });
 });
 
@@ -278,22 +279,22 @@ describe('negative-case matrix: scriptPubKey', () => {
 describe('negative-case matrix: input format', () => {
   it('an invalid hex leaf script is rejected', () => {
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, { script: 'zz', leafVersion: 192 }] }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, { script: 'zz', leafVersion: 192 }] }),
       'INVALID_HEX',
     );
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, { script: 'abc', leafVersion: 192 }] }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, { script: 'abc', leafVersion: 192 }] }),
       'INVALID_HEX',
     );
   });
 
   it('a tree node that is neither a leaf nor a branch is rejected', () => {
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, { foo: 1 }] as unknown as ScriptTreeInput }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, { foo: 1 }] as unknown as ScriptTreeInput }),
       'INVALID_TREE_NODE',
     );
     expectCode(
-      () => createP2mrOutput({ scriptTree: [LEAF_A, 42] as unknown as ScriptTreeInput }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [LEAF_A, 42] as unknown as ScriptTreeInput }),
       'INVALID_TREE_NODE',
     );
   });

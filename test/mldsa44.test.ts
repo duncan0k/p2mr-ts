@@ -129,7 +129,7 @@ describe('OP_CHECKMLDSA44 leaf templates', () => {
   it('a generic tree with the opcode is still refused', () => {
     // 0xf0 is OP_SUCCESS240 to a generic construction; only the template builder lifts that
     expectCode(
-      () => createP2mrOutput({ scriptTree: [{ script: S1 }, { script: MLDSA44_FAIL_LEAF_SCRIPT }] }),
+      () => createP2mrOutput({ network: 'regtest', scriptTree: [{ script: S1 }, { script: MLDSA44_FAIL_LEAF_SCRIPT }] }),
       'OP_SUCCESS_NOT_ALLOWED',
     );
   });
@@ -161,6 +161,7 @@ describe('template outputs', () => {
 
   it('commit to the same root in either leaf order', () => {
     const swapped = createP2mrOutput({
+      network: 'regtest',
       scriptTree: [{ script: MLDSA44_FAIL_LEAF_SCRIPT }, { script: S1 }],
       allowOpSuccess: true,
     });
@@ -200,6 +201,7 @@ describe('template outputs', () => {
 
     const other = (scriptTree: Parameters<typeof createP2mrOutput>[0]['scriptTree'], unsafe = false) =>
       createP2mrOutput({
+        network: 'regtest',
         scriptTree,
         allowOpSuccess: true,
         ...(unsafe ? { allowUnsafeSingleLeaf: true, allowUnsafeLeafVersion: true } : {}),
@@ -279,6 +281,7 @@ describe('protection status of received outputs', () => {
 
   it('never protects an output whose tree is not the template tree', () => {
     const classicalOrPq = createP2mrOutput({
+      network: 'regtest',
       scriptTree: [{ script: S1 }, { script: concatBytes(Uint8Array.of(0x20), XONLY, Uint8Array.of(0xac)) }],
       allowOpSuccess: true,
     }).scriptPubKey;

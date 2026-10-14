@@ -93,7 +93,7 @@ describe('p2mr_construction.json (pinned commit 620871a7)', () => {
   it('p2mr_duplicate_leaves: two identical leaves each get a control block distinguished by position', () => {
     const v = file.test_vectors.find((x) => x.id === 'p2mr_duplicate_leaves');
     expect(v).toBeDefined();
-    const out = createP2mrOutput({ ...v!.given } as CreateP2mrOutputOptions);
+    const out = createP2mrOutput({ network: 'mainnet', ...v!.given } as CreateP2mrOutputOptions);
 
     expect(out.leaves).toHaveLength(3);
     // The leaf scripts at position 0 and position 2 are identical
@@ -110,6 +110,7 @@ describe('p2mr_construction.json (pinned commit 620871a7)', () => {
   it('p2mr_different_version_leaves: the control block for leaf version 250 starts with 0xfb', () => {
     const v = file.test_vectors.find((x) => x.id === 'p2mr_different_version_leaves');
     const out = createP2mrOutput({
+      network: 'mainnet',
       ...v!.given,
       allowUnsafeLeafVersion: true,
     } as CreateP2mrOutputOptions);
@@ -134,7 +135,7 @@ describe('p2mr_construction.json (pinned commit 620871a7)', () => {
 
       let thrown: unknown;
       try {
-        createP2mrOutput({ ...v!.given } as CreateP2mrOutputOptions);
+        createP2mrOutput({ network: 'mainnet', ...v!.given } as CreateP2mrOutputOptions);
       } catch (err) {
         thrown = err;
       }
@@ -148,11 +149,11 @@ describe('p2mr_construction.json (pinned commit 620871a7)', () => {
       expect(Object.keys(v!.given)).toContain('script_tree');
       expect(givenScriptTree(v!.given)).toBe('');
 
-      expect(() => createP2mrOutput({ ...v!.given } as CreateP2mrOutputOptions)).toThrowError(
+      expect(() => createP2mrOutput({ network: 'mainnet', ...v!.given } as CreateP2mrOutputOptions)).toThrowError(
         P2mrError,
       );
       try {
-        createP2mrOutput({ ...v!.given } as CreateP2mrOutputOptions);
+        createP2mrOutput({ network: 'mainnet', ...v!.given } as CreateP2mrOutputOptions);
       } catch (err) {
         expect((err as P2mrError).code).toBe('SCRIPT_TREE_REQUIRED');
       }
@@ -164,8 +165,8 @@ describe('p2mr_construction.json (pinned commit 620871a7)', () => {
       { script: '20' + '11'.repeat(32) + 'ac', leafVersion: 192 },
       { script: '20' + '22'.repeat(32) + 'ac', leafVersion: 192 },
     ];
-    const a = createP2mrOutput({ scriptTree: tree });
-    const b = createP2mrOutput({ script_tree: tree });
+    const a = createP2mrOutput({ network: 'regtest', scriptTree: tree });
+    const b = createP2mrOutput({ network: 'regtest', script_tree: tree });
     expect(bytesToHex(a.merkleRoot)).toBe(bytesToHex(b.merkleRoot));
     expect(a.address).toBe(b.address);
   });

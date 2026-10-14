@@ -155,6 +155,7 @@ function anyTree(scriptTree: ScriptTreeInput): Uint8Array {
     allowUnsafeLeafVersion: true,
     allowUnsafeSingleLeaf: true,
     allowOpSuccess: true,
+    network: 'regtest',
   }).scriptPubKey;
 }
 
@@ -228,8 +229,10 @@ describe('leaf version 0xe0', () => {
       { script: SCHNORR_LEAF, leafVersion: E0 },
       { script: MLDSA44_FAIL_LEAF_SCRIPT, leafVersion: E0 },
     ];
-    expectCode(() => createP2mrOutput({ scriptTree }), 'LEAF_VERSION_NOT_ALLOWED');
-    expect(createP2mrOutput({ scriptTree, allowUnsafeLeafVersion: true }).leaves[0]?.controlBlock[0]).toBe(0xe1);
+    expectCode(() => createP2mrOutput({ scriptTree, network: 'regtest' }), 'LEAF_VERSION_NOT_ALLOWED');
+    expect(
+      createP2mrOutput({ scriptTree, allowUnsafeLeafVersion: true, network: 'regtest' }).leaves[0]?.controlBlock[0],
+    ).toBe(0xe1);
   });
 });
 
@@ -498,7 +501,10 @@ describe('spends of an S3 output', () => {
 
   it('give signatures that a leaf of version 0xc0 does not take either', () => {
     // the Schnorr address of a wallet: <key> OP_CHECKSIG next to OP_RETURN, both 0xc0
-    const c0 = createP2mrOutput({ scriptTree: [{ script: SCHNORR_LEAF }, { script: MLDSA44_FAIL_LEAF_SCRIPT }] });
+    const c0 = createP2mrOutput({
+      scriptTree: [{ script: SCHNORR_LEAF }, { script: MLDSA44_FAIL_LEAF_SCRIPT }],
+      network: 'regtest',
+    });
     const spend = spendOf(c0.scriptPubKey);
     const witnessFor = (message: Uint8Array) => [
       schnorr.sign(message, SCHNORR_SECRET, ZERO_AUX),

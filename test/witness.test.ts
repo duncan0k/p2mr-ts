@@ -15,7 +15,7 @@ import { loadVectorFile } from './vectors.js';
 const vector = loadVectorFile('p2mr_construction.json').test_vectors.find(
   (v) => v.id === 'p2mr_three_leaf_complex',
 );
-const out = createP2mrOutput({ ...vector!.given } as CreateP2mrOutputOptions);
+const out = createP2mrOutput({ network: 'mainnet', ...vector!.given } as CreateP2mrOutputOptions);
 
 /** A placeholder signature; this library does not sign, it only assembles. */
 const FAKE_SIG = hexToBytes(`${'ab'.repeat(64)}`);
@@ -131,6 +131,7 @@ describe('script-path witness stack assembly', () => {
 
   it('m=0 (single leaf) witness stack: the control block is a single byte', () => {
     const single = createP2mrOutput({
+      network: 'regtest',
       scriptTree: { script: `20${'11'.repeat(32)}ac`, leafVersion: 192 },
       allowUnsafeSingleLeaf: true,
     });

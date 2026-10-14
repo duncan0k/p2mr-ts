@@ -77,7 +77,7 @@ const out = createP2mrOutput({
       { script: '2073…6aac', leafVersion: 0xc0 },
     ],
   ],
-  network: 'mainnet',
+  network: 'regtest',        // required; there is no default
 });
 
 out.merkleRoot;   // Uint8Array(32)
@@ -105,6 +105,11 @@ const witness = assembleScriptPathWitness({
   controlBlock: out.leaves[1].controlBlock,
 });
 ```
+
+`network` is required and has no default. BIP-360 is not active on mainnet or testnet: there a
+witness v2 output is an unknown witness version, which BIP-141 leaves **spendable by anyone**.
+Use `regtest` or a signet that activates BIP-360; `'mainnet'` and `'testnet'` remain available
+only as explicit values (for example to reproduce the `bc1z` addresses of the official vectors).
 
 Both key names `scriptTree` and `script_tree` are accepted -- the official vectors use both.
 

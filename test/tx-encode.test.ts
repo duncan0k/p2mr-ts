@@ -27,7 +27,7 @@ const RAW_UNSIGNED: string = (
 const vector = loadVectorFile('p2mr_construction.json').test_vectors.find(
   (v) => v.id === 'p2mr_three_leaf_complex',
 )!;
-const out = createP2mrOutput({ ...vector.given } as CreateP2mrOutputOptions);
+const out = createP2mrOutput({ network: 'mainnet', ...vector.given } as CreateP2mrOutputOptions);
 const leaf = out.leaves[1]!;
 
 /** A placeholder signature; this library does not sign, only the serialization matters here. */

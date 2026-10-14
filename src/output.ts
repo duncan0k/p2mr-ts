@@ -1,5 +1,5 @@
 import type { Network } from './address.js';
-import { decodeP2mrAddress, encodeP2mrAddress } from './address.js';
+import { decodeP2mrAddress, encodeP2mrAddress, NETWORK_HRP } from './address.js';
 import { bytesEqual, concatBytes } from './bytes.js';
 import { encodeControlBlock } from './controlBlock.js';
 import { assert, P2mrError } from './errors.js';
@@ -42,8 +42,14 @@ export interface CreateP2mrOutputOptions extends NormalizeTreeOptions {
   readonly scriptTree?: ScriptTreeInput | null | '' | undefined;
   /** snake_case alias for `scriptTree`. */
   readonly script_tree?: ScriptTreeInput | null | '' | undefined;
-  /** Defaults to mainnet. */
-  readonly network?: Network;
+  /**
+   * The network to encode the address for. Required, with no default.
+   *
+   * BIP-360 is not active on mainnet or testnet: there a witness v2 output is an unknown witness
+   * version, which BIP-141 leaves anyone-can-spend. 'mainnet' and 'testnet' are still accepted as
+   * explicit values (e.g. to reproduce the official vectors), but they must be asked for.
+   */
+  readonly network: Network;
   /**
    * Allow constructing a single-leaf (m=0) output. Defaults to false.
    *
@@ -92,7 +98,7 @@ const KEY_PATH_FIELDS = ['internalPubkey', 'tweak', 'tweakedPubkey'] as const;
  * only looks at the 32-byte witness program, so do not carry these rejections into consensus tests.
  */
 export function createP2mrOutput(options: CreateP2mrOutputOptions): P2mrOutput {
-  const bag = options as Record<string, unknown>;
+  const bag = options as unknown as Record<string, unknown>;
   for (const field of KEY_PATH_FIELDS) {
     if (bag[field] !== undefined) {
       throw new P2mrError(
@@ -102,6 +108,22 @@ export function createP2mrOutput(options: CreateP2mrOutputOptions): P2mrOutput {
       );
     }
   }
+
+  // TypeScript makes `network` required; this guards JavaScript callers and `as` casts
+  const rawNetwork: unknown = bag['network'];
+  if (rawNetwork === undefined) {
+    throw new P2mrError(
+      'NETWORK_REQUIRED',
+      'network is required: BIP-360 is not active on mainnet or testnet, where a witness v2 output is anyone-can-spend under BIP-141. ' +
+        "Pass network explicitly ('regtest' or 'signet' for experiments; 'mainnet' / 'testnet' only if you mean it)",
+    );
+  }
+  assert(
+    typeof rawNetwork === 'string' && Object.prototype.hasOwnProperty.call(NETWORK_HRP, rawNetwork),
+    'UNKNOWN_NETWORK',
+    `unknown network ${String(rawNetwork)}`,
+  );
+  const network = rawNetwork as Network;
 
   const rawTree = options.scriptTree !== undefined ? options.scriptTree : options.script_tree;
   const normalizeOptions: NormalizeTreeOptions = {
@@ -117,7 +139,6 @@ export function createP2mrOutput(options: CreateP2mrOutputOptions): P2mrOutput {
       'Pass allowUnsafeSingleLeaf: true explicitly if you really need to construct one',
   );
 
-  const network: Network = options.network ?? 'mainnet';
   const { merkleRoot, leaves } = analyzeScriptTree(tree);
 
   return {

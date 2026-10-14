@@ -72,6 +72,7 @@ describe('p2mr_pqc_construction.json (pinned commit 620871a7, construction only,
       let thrown: unknown;
       try {
         createP2mrOutput({
+          network: 'mainnet',
           ...v.given,
           ...flags,
           allowOpSuccess: false,
@@ -106,7 +107,7 @@ describe('p2mr_pqc_construction.json (pinned commit 620871a7, construction only,
     const v = file.test_vectors.find((x) => x.id === 'p2mr_missing_leaf_script_tree_error');
     expect(givenScriptTree(v!.given)).toBe('');
     try {
-      createP2mrOutput({ ...v!.given, ...BASE_FLAGS } as CreateP2mrOutputOptions);
+      createP2mrOutput({ network: 'mainnet', ...v!.given, ...BASE_FLAGS } as CreateP2mrOutputOptions);
       expect.unreachable('should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(P2mrError);

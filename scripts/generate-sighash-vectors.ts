@@ -88,7 +88,7 @@ export function buildFixture(): P2mrFixture {
   for (const spec of P2MR_INPUTS) {
     const v = construction.test_vectors.find((t) => t.id === spec.vectorId);
     if (!v) throw new Error(`missing construction vector ${spec.vectorId}`);
-    const out = createP2mrOutput({ ...v.given } as CreateP2mrOutputOptions);
+    const out = createP2mrOutput({ network: 'mainnet', ...v.given } as CreateP2mrOutputOptions);
     const leaf = out.leaves[spec.leafIndex];
     if (!leaf) throw new Error(`${spec.vectorId} has no leaf at index ${spec.leafIndex}`);
     spentOutputs[spec.inputIndex] = {

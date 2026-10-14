@@ -102,7 +102,7 @@ describe('differential against the vendored Python reference implementation', ()
             // library must throw
             expect([null, '']).toContain(givenScriptTree(v.given));
             expect(() =>
-              createP2mrOutput({ ...v.given, allowOpSuccess: true } as CreateP2mrOutputOptions),
+              createP2mrOutput({ network: 'mainnet', ...v.given, allowOpSuccess: true } as CreateP2mrOutputOptions),
             ).toThrowError();
             return;
           }
